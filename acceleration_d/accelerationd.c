@@ -30,6 +30,7 @@
 
 
 #define __NR_set_acceleration 378
+#define TIME_BETWEEN_POLLS 10
 
 
 /* set to 1 for a bit of debug output */
@@ -46,13 +47,19 @@ static int open_sensors(struct sensors_module_t **hw_module,
 			struct sensors_poll_device_t **poll_device);
 static void enumerate_sensors(const struct sensors_module_t *sensors);
 
+int set_acceleration(struct dev_acceleration  *acceleration)
+{
+	return syscall(__NR_set_acceleration, acceleration);	
+}
+
 static int poll_sensor_data(struct sensors_poll_device_t *sensors_device)
 {
     const size_t numEventMax = 16;
     const size_t minBufferSize = numEventMax;
+    struct dev_acceleration acceleration;
     sensors_event_t buffer[minBufferSize];
 	ssize_t count = sensors_device->poll(sensors_device, buffer, minBufferSize);
-	int i;
+	int i, ret;
 
 
 	for (i = 0; i < count; ++i) {
@@ -60,11 +67,20 @@ static int poll_sensor_data(struct sensors_poll_device_t *sensors_device)
 			continue;
 
 		/* At this point we should have valid data*/
-        /* Scale it and pass it to kernel*/
+        /* Scale it and pass it to kernel
 		dbg("Acceleration: x= %0.2f, y= %0.2f, "
 			"z= %0.2f\n", buffer[i].acceleration.x,
-			buffer[i].acceleration.y, buffer[i].acceleration.z);
+			buffer[i].acceleration.y, buffer[i].acceleration.z);*/
 
+		acceleration.x = buffer[i].acceleration.x * 100;
+		acceleration.y = buffer[i].acceleration.y * 100;
+		acceleration.z = buffer[i].acceleration.z * 100;
+
+		ret = set_acceleration(&acceleration);
+
+		if (ret < 0) {
+			printf("Error retrieving acceleration\n");
+		}
 	}
 	return 0;
 }
@@ -111,6 +127,7 @@ int main(int argc, char **argv)
 
 	while (1) {
 		poll_sensor_data(sensors_device);
+		usleep(TIME_BETWEEN_POLLS);	
 	}
 
 	return EXIT_SUCCESS;
