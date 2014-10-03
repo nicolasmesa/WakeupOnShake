@@ -76,6 +76,7 @@ int main(int argc, char **argv)
 	effective_sensor = -1;
 	struct sensors_module_t *sensors_module = NULL;
 	struct sensors_poll_device_t *sensors_device = NULL;
+	int pid;
 
 	printf("Opening sensors...\n");
 	if (open_sensors(&sensors_module,
@@ -88,6 +89,26 @@ int main(int argc, char **argv)
 
 	/* Fill in daemon implementation around here */
 	printf("turn me into a daemon!\n");
+
+	pid = fork();
+
+	if(pid == 0) {
+		if (setsid() < 0){
+			printf("Error: %s\n", strerror(errno));
+		}
+
+		chdir("/");
+
+		close(0);
+		close(1);
+		close(2);
+	} else if (pid > 0) {
+		exit(0);
+	} else {
+		printf("Error: %s\n", strerror(errno));
+		exit(errno);
+	}
+
 	while (1) {
 		poll_sensor_data(sensors_device);
 	}

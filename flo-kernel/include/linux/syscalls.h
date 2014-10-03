@@ -76,6 +76,7 @@ struct file_handle;
 #include <linux/quota.h>
 #include <linux/key.h>
 #include <trace/syscall.h>
+#include <linux/acceleration.h>
 
 #define __SC_DECL1(t1, a1)	t1 a1
 #define __SC_DECL2(t2, a2, ...) t2 a2, __SC_DECL1(__VA_ARGS__)
@@ -266,7 +267,8 @@ asmlinkage long sys_nanosleep(struct timespec __user *rqtp, struct timespec __us
 asmlinkage long sys_alarm(unsigned int seconds);
 asmlinkage long sys_getpid(void);
 asmlinkage long sys_getppid(void);
-asmlinkage long sys_getuid(void);
+asmlinkage long sys_getppid(void);
+asmlinkage long sys_set_acceleration(struct dev_acceleration __user * acceleration);
 asmlinkage long sys_geteuid(void);
 asmlinkage long sys_getgid(void);
 asmlinkage long sys_getegid(void);
