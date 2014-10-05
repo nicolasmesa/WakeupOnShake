@@ -10,6 +10,10 @@
 struct dev_acceleration curr_acceleration;
 SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *, acceleration)
 {
+	if (current->cred->uid != 0) {
+		printk(KERN_CRIT "Non root user trying to set acceleration: %d\n", current->cred->uid);
+		return -EACCES;
+	}
 
 	printk(KERN_CRIT "Kernel previous accelerations:\n\t- x: %d\n\t- y: %d\n\t- z: %d", curr_acceleration.x, curr_acceleration.y, curr_acceleration.z);
 
