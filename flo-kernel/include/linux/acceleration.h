@@ -7,4 +7,5 @@ struct dev_acceleration {
 	int z; /* acceleration along Z-axis */
 };
 
+extern struct dev_acceleration curr_acceleration;
 #endif

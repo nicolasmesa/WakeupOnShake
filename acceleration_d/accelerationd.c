@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <hardware/hardware.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <hardware/sensors.h> /* <-- This is a good place to look! */
 #include "../flo-kernel/include/linux/akm8975.h" 
 #include "acceleration.h"
@@ -58,17 +60,19 @@ static int poll_sensor_data(struct sensors_poll_device_t *sensors_device)
     const size_t minBufferSize = numEventMax;
     struct dev_acceleration acceleration;
     sensors_event_t buffer[minBufferSize];
+	printf("Befor sensors_dev call\n");
+
 	ssize_t count = sensors_device->poll(sensors_device, buffer, minBufferSize);
 	int i, ret;
 
-
+	printf("Here\n");
 	for (i = 0; i < count; ++i) {
 		if (buffer[i].sensor != effective_sensor)
 			continue;
 
 		/* At this point we should have valid data*/
-        /* Scale it and pass it to kernel
-		dbg("Acceleration: x= %0.2f, y= %0.2f, "
+        /* Scale it and pass it to kernel */
+		/*dbg("Acceleration: x= %0.2f, y= %0.2f, "
 			"z= %0.2f\n", buffer[i].acceleration.x,
 			buffer[i].acceleration.y, buffer[i].acceleration.z);*/
 
@@ -79,7 +83,7 @@ static int poll_sensor_data(struct sensors_poll_device_t *sensors_device)
 		ret = set_acceleration(&acceleration);
 
 		if (ret < 0) {
-			printf("Error retrieving acceleration\n");
+			printf("Error setting acceleration\n");
 		}
 	}
 	return 0;
@@ -94,6 +98,41 @@ int main(int argc, char **argv)
 	struct sensors_poll_device_t *sensors_device = NULL;
 	int pid;
 
+	pid = fork();   
+                        
+	if(pid == 0) {
+        	if (setsid() < 0){
+			printf("Error: %s\n", strerror(errno));
+			exit(1);
+		}
+
+		if (chdir("/") < 0) {
+			printf("Error: %s\n", strerror(errno));
+			exit(1);
+		}
+
+		if (close(0) < 0) {
+			printf("Error: %s\n", strerror(errno));
+			exit(1);
+		}
+
+		if (close(1) < 0) {
+			printf("Error: %s\n", strerror(errno));
+			exit(1);
+		}
+
+		if(close(2) < 0) {
+			printf("Error: %s\n", strerror(errno));
+			exit(1);
+		}
+	} else if (pid > 0) {
+		exit(0);
+	} else {
+		printf("Error: %s\n", strerror(errno));
+		exit(errno);
+	}
+
+
 	printf("Opening sensors...\n");
 	if (open_sensors(&sensors_module,
 			 &sensors_device) < 0) {
@@ -105,29 +144,11 @@ int main(int argc, char **argv)
 
 	/* Fill in daemon implementation around here */
 	printf("turn me into a daemon!\n");
-
-	pid = fork();
-
-	if(pid == 0) {
-		if (setsid() < 0){
-			printf("Error: %s\n", strerror(errno));
-		}
-
-		chdir("/");
-
-		close(0);
-		close(1);
-		close(2);
-	} else if (pid > 0) {
-		exit(0);
-	} else {
-		printf("Error: %s\n", strerror(errno));
-		exit(errno);
-	}
+	
 
 	while (1) {
 		poll_sensor_data(sensors_device);
-		usleep(TIME_BETWEEN_POLLS);	
+		usleep(TIME_BETWEEN_POLLS);
 	}
 
 	return EXIT_SUCCESS;
@@ -164,8 +185,10 @@ static int open_sensors(struct sensors_module_t **mSensorModule,
 	const struct sensor_t *list;
 	ssize_t count = (*mSensorModule)->get_sensors_list(*mSensorModule, &list);
 	size_t i;
-	for (i=0 ; i<(size_t)count ; i++)
+	for (i=0 ; i<(size_t)count ; i++) {
+		(*mSensorDevice)->setDelay(*mSensorDevice, list[i].handle, TIME_BETWEEN_POLLS * 1000000); 
 		(*mSensorDevice)->activate(*mSensorDevice, list[i].handle, 1);
+	}
 
 	return 0;
 }
