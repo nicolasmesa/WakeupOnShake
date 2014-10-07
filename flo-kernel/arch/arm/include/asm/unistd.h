@@ -405,6 +405,10 @@
 #define __NR_process_vm_readv		(__NR_SYSCALL_BASE+376)
 #define __NR_process_vm_writev		(__NR_SYSCALL_BASE+377)
 #define __NR_set_acceleration		(__NR_SYSCALL_BASE+378)
+#define __NR_accevt_create		(__NR_SYSCALL_BASE+379)
+#define __NR_accevt_wait		(__NR_SYSCALL_BASE+380)
+#define __NR_accevt_signal		(__NR_SYSCALL_BASE+381)
+#define __NR_accevt_destroy		(__NR_SYSCALL_BASE+382)
 
 /*
  * The following SWIs are ARM private.

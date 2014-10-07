@@ -31,3 +31,30 @@ SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *, acceleration
 
 	return 0;
 }
+
+SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
+{
+	printk(KERN_WARNING "accevt called\n");
+	return 0;
+}
+
+
+SYSCALL_DEFINE1(accevt_wait, int, event_id)
+{
+	printk(KERN_WARNING "accevt_wait called\n");
+	return 0;
+}
+
+
+SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
+{
+	printk(KERN_WARNING "accevt_signal called\n");
+	return 0;
+}
+
+SYSCALL_DEFINE1(accevt_destroy, int, event_id)
+{
+	printk(KERN_WARNING "accevt_destroy called\n");
+	return 0;
+}
+

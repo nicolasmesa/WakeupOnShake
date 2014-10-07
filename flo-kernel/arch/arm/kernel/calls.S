@@ -388,6 +388,10 @@
 		CALL(sys_process_vm_readv)
 		CALL(sys_process_vm_writev)
 		CALL(sys_set_acceleration)
+		CALL(sys_accevt_create)
+/* 380 */	CALL(sys_accevt_wait)
+		CALL(sys_accevt_signal)
+		CALL(sys_accevt_destroy)
 #ifndef syscalls_counted
 .equ syscalls_padding, ((NR_syscalls + 3) & ~3) - NR_syscalls
 #define syscalls_counted
