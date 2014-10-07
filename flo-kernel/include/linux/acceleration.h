@@ -28,5 +28,4 @@ struct acc_motion {
                           sum_each_sample(dlt_x + dlt_y + dlt_z) > NOISE */
 };
 
-extern struct dev_acceleration curr_acceleration;
 #endif
