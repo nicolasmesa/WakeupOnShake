@@ -106,7 +106,7 @@ static int poll_sensor_data(struct sensors_poll_device_t *sensors_device)
 		acceleration.y = buffer[i].acceleration.y * 100;
 		acceleration.z = buffer[i].acceleration.z * 100;
 
-		ret = set_acceleration(&acceleration);
+		ret = accevt_signal(&acceleration);
 
 		if (ret < 0) {
 			printf("Error setting acceleration\n");
