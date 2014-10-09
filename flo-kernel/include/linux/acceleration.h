@@ -47,9 +47,9 @@ struct context {
 };
 
 struct deltas {
-	unsigned int dlt_x;
-	unsigned int dlt_y;
-	unsigned int dlt_z;
+	int dlt_x;
+	int dlt_y;
+	int dlt_z;
 };
 
 #endif

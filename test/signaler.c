@@ -39,27 +39,23 @@ int accevt_destroy(int event_id)
 
 int main(int argc, char ** argv)
 {
-	struct acc_motion myAcceleration;
-	int dlt_x, dlt_y, dlt_z, freq, id;
+	struct dev_acceleration devAcc;
+	int x, y, z;
 
-	if (argc < 5) {
-		printf("Usage: %s <dlt_x> <dlt_y> <dlt_z> <freq>\n", argv[0]);
+	if (argc < 4) {
+		printf("Usage: %s <x> <y> <z>\n", argv[0]);
 		return -1;
 	}
 
-	dlt_x = atoi(argv[1]);
-	dlt_y = atoi(argv[2]);
-	dlt_z = atoi(argv[3]);
-	freq = atoi(argv[4]);
+	x = atoi(argv[1]);
+	y = atoi(argv[2]);
+	z = atoi(argv[3]);
 
-	myAcceleration.dlt_x = dlt_x;
-	myAcceleration.dlt_y = dlt_y;
-	myAcceleration.dlt_z = dlt_z;
-	myAcceleration.frq = freq;
+	devAcc.x = x;
+	devAcc.y = y;
+	devAcc.z = z;
 
-	id = accevt_create(&myAcceleration);
-
-	printf("The returned id for the event is %d\n", id);
+	accevt_signal(&devAcc);
 
 	return 0;			
 }
