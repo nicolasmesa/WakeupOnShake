@@ -1,6 +1,9 @@
 #ifndef _DEV_ACCELERATION_H
 #define _DEV_ACCELERATION_H
 
+#include <linux/list.h>
+#include <linux/wait.h>
+
 struct dev_acceleration {
 	int x; /* acceleration along X-axis */
 	int y; /* acceleration along Y-axis */
@@ -26,6 +29,27 @@ struct acc_motion {
      
      unsigned int frq;   /* Number of samples that satisfies:
                           sum_each_sample(dlt_x + dlt_y + dlt_z) > NOISE */
+};
+
+struct motion_event {
+	int id;
+	struct acc_motion motion;
+	int referenceCount;
+	int deletedFlag;
+	wait_queue_head_t queue;
+	struct list_head events;
+};
+
+
+struct context {
+	int current_id;
+	struct list_head events;
+};
+
+struct deltas {
+	unsigned int dlt_x;
+	unsigned int dlt_y;
+	unsigned int dlt_z;
 };
 
 #endif
