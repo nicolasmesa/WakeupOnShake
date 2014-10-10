@@ -21,24 +21,55 @@ DEFINE_SPINLOCK(events_lock);
 
 int search_and_add(int event_id)
 {
-	int found = 0, my_wake_up_counter;
-	struct motion_event *event;
+	int ret = 0, found = 0, my_wake_up_counter, deleted = 0;
+	struct motion_event *event, *temp;
+	DEFINE_WAIT(wait);
 
 	spin_lock(&events_lock);
 
 
-	list_for_each_entry(event, &(evtCtx.events), events) {
+	list_for_each_entry_safe(event, temp, &(evtCtx.events), events) {
 		if (event->id == event_id) {
 			found = 1;
+			event->referenceCount++;
 			my_wake_up_counter = event->wake_up_counter;
-			spin_unlock(&events_lock);	
-			wait_event_interruptible(event->queue, my_wake_up_counter < event->wake_up_counter);
+			add_wait_queue(&event->queue, &wait);
+
+			while (my_wake_up_counter == event->wake_up_counter) {
+				prepare_to_wait(&event->queue, &wait, TASK_INTERRUPTIBLE);
+
+				if (signal_pending(current)){
+					event->referenceCount--;
+					finish_wait(&event->queue, &wait);
+					spin_unlock(&events_lock);
+					return -1;
+				}
+
+				spin_unlock(&events_lock);
+				schedule();
+				spin_lock(&events_lock);
+			}
+
+			finish_wait(&event->queue, &wait);	
+
+			event->referenceCount--;
+
+			if (event->deletedFlag) {
+				deleted = 1;
+			}
+
+			if (deleted && event->referenceCount <= 0) {
+				list_del(&event->events);
+				kfree(event);
+			}
+
 			break;
 		}
 	}
 
-	if (!found)
-		spin_unlock(&events_lock);
+	spin_unlock(&events_lock);
+
+	ret = deleted ? -2 : found;
 
 	return found;
 }
@@ -107,7 +138,6 @@ void search_and_signal(void)
 			freq++;
 
 			if (freq >= event->motion.frq) {
-				event->referenceCount = 0;
 				event->wake_up_counter++;
 				wake_up_all(&event->queue);
 				break;
@@ -264,7 +294,30 @@ SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
 
 SYSCALL_DEFINE1(accevt_destroy, int, event_id)
 {
-	printk(KERN_WARNING "accevt_destroy called\n");
+	struct motion_event *event, *temp;
+	int found = 0;
+
+	spin_lock(&events_lock);
+
+	list_for_each_entry_safe(event, temp, &(evtCtx.events), events) {
+		if (event->id == event_id) {
+			found = 1;
+			event->deletedFlag = 1;
+
+			if (event->referenceCount == 0) {
+				list_del(&event->events);
+				kfree(event);
+			} else {
+				event->wake_up_counter++;
+				wake_up_all(&event->queue);
+			}
+
+			break;	
+		}
+	}
+
+	spin_unlock(&events_lock);
+
 	return 0;
 }
 
