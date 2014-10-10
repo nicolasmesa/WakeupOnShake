@@ -33,6 +33,7 @@ struct acc_motion {
 
 struct motion_event {
 	int id;
+	int wake_up_counter;
 	struct acc_motion motion;
 	int referenceCount;
 	int deletedFlag;

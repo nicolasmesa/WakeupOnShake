@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "acceleration.h"
-
+#include <errno.h>
 
 #define __NR_set_acceleration 378
 #define __NR_accevt_create 379
@@ -55,7 +55,8 @@ int main(int argc, char ** argv)
 	devAcc.y = y;
 	devAcc.z = z;
 
-	accevt_signal(&devAcc);
+	if (accevt_signal(&devAcc))
+		printf("Error: %s\n", strerror(errno));
 
 	return 0;			
 }

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
-#include <errno.h>
 #include "acceleration.h"
+#include <errno.h>
 
 
 #define __NR_set_acceleration 378
@@ -40,30 +40,19 @@ int accevt_destroy(int event_id)
 
 int main(int argc, char ** argv)
 {
-	struct acc_motion myAcceleration;
-	int dlt_x, dlt_y, dlt_z, freq, id;
+	int event_id, ret;
 
-	if (argc < 5) {
-		printf("Usage: %s <dlt_x> <dlt_y> <dlt_z> <freq>\n", argv[0]);
+	if (argc < 2) {
+		printf("Usage: %s <event_id>\n", argv[0]);
 		return -1;
 	}
 
-	dlt_x = atoi(argv[1]);
-	dlt_y = atoi(argv[2]);
-	dlt_z = atoi(argv[3]);
-	freq = atoi(argv[4]);
+	event_id = atoi(argv[1]);
 
-	myAcceleration.dlt_x = dlt_x;
-	myAcceleration.dlt_y = dlt_y;
-	myAcceleration.dlt_z = dlt_z;
-	myAcceleration.frq = freq;
+	ret = accevt_wait(event_id);
 
-	id = accevt_create(&myAcceleration);
-
-	if (id < 0)
+	if (ret < 0)
 		printf("Error: %s\n", strerror(errno));
-	else
-		printf("The returned id for the event is %d\n", id);
 
 	return 0;			
 }

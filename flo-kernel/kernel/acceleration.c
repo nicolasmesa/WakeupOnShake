@@ -7,13 +7,41 @@
 #include <linux/slab.h>
 #include <linux/acceleration.h>
 #include <linux/spinlock.h>
+#include <linux/wait.h>
 
-static struct context evtCtx;
+static struct context evtCtx = {
+	.current_id = 1,
+	.events = LIST_HEAD_INIT(evtCtx.events),
+};
 
 static struct deltas buffer[WINDOW];
 static int acc_count = 0;
 DEFINE_SPINLOCK(buffer_lock);
 DEFINE_SPINLOCK(events_lock);
+
+int search_and_add(int event_id)
+{
+	int found = 0, my_wake_up_counter;
+	struct motion_event *event;
+
+	spin_lock(&events_lock);
+
+
+	list_for_each_entry(event, &(evtCtx.events), events) {
+		if (event->id == event_id) {
+			found = 1;
+			my_wake_up_counter = event->wake_up_counter;
+			spin_unlock(&events_lock);	
+			wait_event_interruptible(event->queue, my_wake_up_counter < event->wake_up_counter);
+			break;
+		}
+	}
+
+	if (!found)
+		spin_unlock(&events_lock);
+
+	return found;
+}
 
 void add_delta_acceleration(struct dev_acceleration *curr_acceleration, struct dev_acceleration * prev_acceleration)
 {
@@ -69,23 +97,19 @@ void search_and_signal(void)
 
 	list_for_each_entry(event, &(evtCtx.events), events) {
 		freq = 0;
-		printk("Analysis of event %d:\t%d\t%d\t%d\n", event->id, event->motion.dlt_x, event->motion.dlt_y, event->motion.dlt_z);
 		for (i = 0; i < count; i++) {
-			printk("Checking buffer[%d]\t%d\t%d\t%d\n", i, buffer[i].dlt_x, buffer[i].dlt_y, buffer[i].dlt_z);
 			if (!check_noise(&(buffer[i])))
 				continue;
-
-			printk("Noise check passed\n");
 
 			if (!delta_is_relevant(&(buffer[i]), &event->motion))
 				continue;
 
 			freq++;
 
-			printk("Delta is relevant:\tCurr_freq: %d\tDesired_fre: %d\n", freq, event->motion.frq);
-
 			if (freq >= event->motion.frq) {
-				printk("Wake up event id: %d\n", event->id);
+				event->referenceCount = 0;
+				event->wake_up_counter++;
+				wake_up_all(&event->queue);
 				break;
 			}
 		}
@@ -142,7 +166,6 @@ SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *, acceleration
 SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 {
 	struct motion_event *new_event;
-	static int first_time = 1;
 	int id;
 
 	new_event = kmalloc(sizeof(*new_event),  GFP_KERNEL);
@@ -151,13 +174,6 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 		return -ENOMEM;
 
 	spin_lock(&events_lock);
-
-	if (first_time) {
-		first_time = 0;
-		evtCtx.current_id = 1;
-		INIT_LIST_HEAD(&(evtCtx.events));
-	}
-
 
 	if (acceleration == NULL) {
 		spin_unlock(&events_lock);
@@ -176,8 +192,10 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 	new_event->id = id;
 
 	INIT_LIST_HEAD(&new_event->events);
+	init_waitqueue_head(&new_event->queue);
 	new_event->deletedFlag = 0;
 	new_event->referenceCount = 0;
+	new_event->wake_up_counter = 0;
 
 	list_add(&new_event->events, &(evtCtx.events));
 
@@ -189,8 +207,14 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 
 SYSCALL_DEFINE1(accevt_wait, int, event_id)
 {
-	printk(KERN_WARNING "accevt_wait called\n");
-	return 0;
+
+	if (event_id < 1)
+		return -EINVAL;
+
+	if (search_and_add(event_id))
+		return 0;
+	else
+		return -EINVAL;
 }
 
 
