@@ -37,7 +37,7 @@
 #define __NR_accevt_signal 381
 #define __NR_accevt_destroy 382
 
-#define TIME_BETWEEN_POLLS 10
+#define TIME_BETWEEN_POLLS 200 
 
 
 /* set to 1 for a bit of debug output */

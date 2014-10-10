@@ -51,9 +51,9 @@ int main(int argc, char ** argv)
 	y = atoi(argv[2]);
 	z = atoi(argv[3]);
 
-	devAcc.x = x;
-	devAcc.y = y;
-	devAcc.z = z;
+	devAcc.x = x * 100;
+	devAcc.y = y * 100;
+	devAcc.z = z * 100;
 
 	if (accevt_signal(&devAcc))
 		printf("Error: %s\n", strerror(errno));
