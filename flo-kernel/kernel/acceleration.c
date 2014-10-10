@@ -69,6 +69,7 @@ int search_and_add(int event_id)
 
 	spin_unlock(&events_lock);
 
+	/* Do some logic to know why it returned: could be 0 on success, -1 if doesn't exist and -2 if deleted */
 	ret = deleted ? -2 : found;
 
 	return found;
