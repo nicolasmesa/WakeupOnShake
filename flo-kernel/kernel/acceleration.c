@@ -221,6 +221,9 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 	id = evtCtx.current_id++;
 	new_event->id = id;
 
+	if (new_event->motion.frq > WINDOW) 
+		new_event->motion.frq = WINDOW;
+
 	INIT_LIST_HEAD(&new_event->events);
 	init_waitqueue_head(&new_event->queue);
 	new_event->deletedFlag = 0;
