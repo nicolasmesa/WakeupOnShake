@@ -99,7 +99,7 @@ int main(int argc, char **argv)
 	}
 	if (pid == 0) {
 		int wait_ret = 0;
-		
+
 		printf("%d waiting on %d\n", getpid(), eventid_arr[fork_ctr]);
 		wait_ret = accevt_wait(eventid_arr[fork_ctr]);
 		if (wait_ret == 0) {
