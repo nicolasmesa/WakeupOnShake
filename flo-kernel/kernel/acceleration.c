@@ -16,6 +16,7 @@ static struct context evtCtx = {
 
 static struct deltas buffer[WINDOW];
 static int acc_count = 0;
+static struct dev_acceleration accelerations[2];
 DEFINE_SPINLOCK(buffer_lock);
 DEFINE_SPINLOCK(events_lock);
 
@@ -252,7 +253,7 @@ SYSCALL_DEFINE1(accevt_wait, int, event_id)
 	if (event_id < 1)
 		return -EINVAL;
 
-	if (!search_and_add(event_id))
+	if (search_and_add(event_id) == 0)
 		return 0;
 	else
 		return -EINVAL;
@@ -261,29 +262,20 @@ SYSCALL_DEFINE1(accevt_wait, int, event_id)
 
 SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
 {
-	static struct dev_acceleration *curr_acceleration = NULL, *prev_acceleration = NULL, *temp;
+	static struct dev_acceleration *curr_acceleration = &accelerations[0];
+	static struct dev_acceleration *prev_acceleration = &accelerations[1];
+	struct dev_acceleration *temp;
         static int first_time = 1;
 
-        if (curr_acceleration == NULL) {
-                curr_acceleration = kmalloc(sizeof(*curr_acceleration), GFP_KERNEL);
-        }
-
-        if (prev_acceleration == NULL) {
-                prev_acceleration = kmalloc(sizeof(*prev_acceleration), GFP_KERNEL);
-        }
-
         if (current->cred->uid != 0) {
-                printk(KERN_CRIT "Non root user trying to set acceleration: %d\n", current->cred->uid);
                 return -EACCES;
         }
 
         if (acceleration == NULL) {
-                printk(KERN_WARNING "Error: acceleration is NULL\n");
                 return -EINVAL;
         }
 
         if (copy_from_user(curr_acceleration, acceleration, sizeof(*curr_acceleration))) {
-                printk(KERN_WARNING "Error while copying acceleration\n");
                 return -EFAULT;
         }
 

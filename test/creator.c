@@ -53,9 +53,9 @@ int main(int argc, char **argv)
 	dlt_z = atoi(argv[3]);
 	freq = atoi(argv[4]);
 
-	myAcceleration.dlt_x = dlt_x * 100;
-	myAcceleration.dlt_y = dlt_y * 100;
-	myAcceleration.dlt_z = dlt_z * 100;
+	myAcceleration.dlt_x = dlt_x;// * 100;
+	myAcceleration.dlt_y = dlt_y;// * 100;
+	myAcceleration.dlt_z = dlt_z;// * 100;
 	myAcceleration.frq = freq;
 
 	id = accevt_create(&myAcceleration);
