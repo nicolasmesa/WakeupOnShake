@@ -17,6 +17,8 @@ static struct context evtCtx = {
 static struct deltas buffer[WINDOW];
 static int acc_count = 0;
 static struct dev_acceleration accelerations[2];
+static struct dev_acceleration curr_acceleration_part2;
+
 DEFINE_SPINLOCK(buffer_lock);
 DEFINE_SPINLOCK(events_lock);
 
@@ -155,41 +157,15 @@ void search_and_signal(void)
 
 SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *, acceleration)
 {
-	static struct dev_acceleration *curr_acceleration = NULL, *prev_acceleration = NULL, *temp;
-	static int first_time = 1;
-
-	if (curr_acceleration == NULL) {
-		curr_acceleration = kmalloc(sizeof(*curr_acceleration), GFP_KERNEL);
-	}
-
-	if (prev_acceleration == NULL) {
-		prev_acceleration = kmalloc(sizeof(*prev_acceleration), GFP_KERNEL);
-	}
-
-	if (current->cred->uid != 0) {
-		return -EACCES;
-	}
 
 	if (acceleration == NULL) {
 		return -EINVAL;
 	}
 
-	if (copy_from_user(curr_acceleration, acceleration, sizeof(*curr_acceleration))) {
+	if (copy_from_user(&curr_acceleration_part2, acceleration, sizeof(curr_acceleration_part2))) {
 		return -EFAULT;
 	}
 
-
-	if (!first_time) {
-		add_delta_acceleration(curr_acceleration, prev_acceleration);
-	}
-
-	/* Switch them. curr_acceleration will be overwritten in next call. Not sure if
-	 this counts as a memory leak since memory is never freed */
-	temp = curr_acceleration;
-	curr_acceleration = prev_acceleration;
-	prev_acceleration = temp;
-
-	first_time = 0;
 	return 0;
 }
 
