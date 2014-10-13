@@ -167,17 +167,14 @@ SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *, acceleration
 	}
 
 	if (current->cred->uid != 0) {
-		printk(KERN_CRIT "Non root user trying to set acceleration: %d\n", current->cred->uid);
 		return -EACCES;
 	}
 
 	if (acceleration == NULL) {
-		printk(KERN_WARNING "Error: acceleration is NULL\n");
 		return -EINVAL;
 	}
 
 	if (copy_from_user(curr_acceleration, acceleration, sizeof(*curr_acceleration))) {
-		printk(KERN_WARNING "Error while copying acceleration\n");
 		return -EFAULT;
 	}
 
@@ -206,20 +203,17 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 	if (new_event == NULL)
 		return -ENOMEM;
 
-	spin_lock(&events_lock);
-
 	if (acceleration == NULL) {
-		spin_unlock(&events_lock);
 		kfree(new_event);
 		return -EINVAL;
 	}
 
 	if (copy_from_user(&new_event->motion, acceleration, sizeof(struct acc_motion))) {
-		spin_unlock(&events_lock);
 		kfree(new_event);
 		return -EFAULT;
 	}
 
+	spin_lock(&events_lock);
 
 	id = evtCtx.current_id++;
 	new_event->id = id;
