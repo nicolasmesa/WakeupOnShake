@@ -21,7 +21,7 @@ DEFINE_SPINLOCK(events_lock);
 
 int search_and_add(int event_id)
 {
-	int ret = 0, found = 0, my_wake_up_counter, deleted = 0;
+	int err = 0, found = 0, my_wake_up_counter, deleted = 0;
 	struct motion_event *event, *temp;
 	DEFINE_WAIT(wait);
 
@@ -31,6 +31,12 @@ int search_and_add(int event_id)
 	list_for_each_entry_safe(event, temp, &(evtCtx.events), events) {
 		if (event->id == event_id) {
 			found = 1;
+
+			if (event->deletedFlag) {
+				deleted = 1;
+				break;
+			}
+
 			event->referenceCount++;
 			my_wake_up_counter = event->wake_up_counter;
 			add_wait_queue(&event->queue, &wait);
@@ -69,10 +75,11 @@ int search_and_add(int event_id)
 
 	spin_unlock(&events_lock);
 
-	/* Do some logic to know why it returned: could be 0 on success, -1 if doesn't exist and -2 if deleted */
-	ret = deleted ? -2 : found;
+	if (!found || deleted) {
+		err = -1;
+	}
 
-	return found;
+	return err; 
 }
 
 void add_delta_acceleration(struct dev_acceleration *curr_acceleration, struct dev_acceleration * prev_acceleration)
@@ -100,7 +107,7 @@ void add_delta_acceleration(struct dev_acceleration *curr_acceleration, struct d
 
 int check_noise(struct deltas *delta)
 {
-	return (delta->dlt_x + delta->dlt_y + delta->dlt_z) > NOISE;
+	return (delta->dlt_x + delta->dlt_y + delta->dlt_z) >= NOISE;
 }
 
 int delta_is_relevant(struct deltas *deltas, struct acc_motion *event)
@@ -245,7 +252,7 @@ SYSCALL_DEFINE1(accevt_wait, int, event_id)
 	if (event_id < 1)
 		return -EINVAL;
 
-	if (search_and_add(event_id))
+	if (!search_and_add(event_id))
 		return 0;
 	else
 		return -EINVAL;
@@ -299,13 +306,19 @@ SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
 SYSCALL_DEFINE1(accevt_destroy, int, event_id)
 {
 	struct motion_event *event, *temp;
-	int found = 0;
+	int found = 0, deleted = 0, ret = 0;
 
 	spin_lock(&events_lock);
 
 	list_for_each_entry_safe(event, temp, &(evtCtx.events), events) {
 		if (event->id == event_id) {
 			found = 1;
+
+			if (event->deletedFlag) {
+				deleted = 1;
+				break;
+			}
+
 			event->deletedFlag = 1;
 
 			if (event->referenceCount == 0) {
@@ -322,6 +335,9 @@ SYSCALL_DEFINE1(accevt_destroy, int, event_id)
 
 	spin_unlock(&events_lock);
 
-	return 0;
+	if (!found || deleted)
+		ret = -EINVAL;
+
+	return ret;
 }
 
