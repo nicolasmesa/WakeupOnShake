@@ -15,7 +15,7 @@ static struct context evtCtx = {
 };
 
 static struct deltas buffer[WINDOW];
-static int acc_count = 0;
+static int acc_count;
 static struct dev_acceleration accelerations[2];
 static struct dev_acceleration curr_acceleration_part2;
 
@@ -45,9 +45,9 @@ int search_and_add(int event_id)
 			add_wait_queue(&event->queue, &wait);
 
 			while (my_wake_up_counter == event->wake_up_counter) {
-				prepare_to_wait(&event->queue, &wait, TASK_INTERRUPTIBLE);
+			prepare_to_wait(&event->queue, &wait, TASK_INTERRUPTIBLE);
 
-				if (signal_pending(current)){
+				if (signal_pending(current)) {
 					event->referenceCount--;
 					finish_wait(&event->queue, &wait);
 					spin_unlock(&events_lock);
@@ -58,40 +58,36 @@ int search_and_add(int event_id)
 				schedule();
 				spin_lock(&events_lock);
 			}
-
-			finish_wait(&event->queue, &wait);	
-
+			finish_wait(&event->queue, &wait);
 			event->referenceCount--;
-
-			if (event->deletedFlag) {
+			if (event->deletedFlag)
 				deleted = 1;
-			}
 
 			if (deleted && event->referenceCount <= 0) {
 				list_del(&event->events);
 				kfree(event);
 			}
-
 			break;
 		}
 	}
 
 	spin_unlock(&events_lock);
 
-	if (!found || deleted) {
+	if (!found || deleted)
 		err = -1;
-	}
 
-	return err; 
+	return err;
 }
 
-void add_delta_acceleration(struct dev_acceleration *curr_acceleration, struct dev_acceleration * prev_acceleration)
+void add_delta_acceleration(struct dev_acceleration *curr_acceleration,
+				struct dev_acceleration *prev_acceleration)
 {
-
-	buffer[acc_count % WINDOW].dlt_x = curr_acceleration->x - prev_acceleration->x;
-	buffer[acc_count % WINDOW].dlt_y = curr_acceleration->y - prev_acceleration->y;
-	buffer[acc_count % WINDOW].dlt_z = curr_acceleration->z - prev_acceleration->z;
-
+	buffer[acc_count % WINDOW].dlt_x =
+				curr_acceleration->x - prev_acceleration->x;
+	buffer[acc_count % WINDOW].dlt_y =
+				curr_acceleration->y - prev_acceleration->y;
+	buffer[acc_count % WINDOW].dlt_z =
+				curr_acceleration->z - prev_acceleration->z;
 	if (buffer[acc_count % WINDOW].dlt_x < 0)
 		buffer[acc_count % WINDOW].dlt_x *= -1;
 
@@ -155,16 +151,16 @@ void search_and_signal(void)
 	spin_unlock(&events_lock);
 }
 
-SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *, acceleration)
+SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *,
+				acceleration)
 {
 
-	if (acceleration == NULL) {
+	if (acceleration == NULL)
 		return -EINVAL;
-	}
 
-	if (copy_from_user(&curr_acceleration_part2, acceleration, sizeof(curr_acceleration_part2))) {
+	if (copy_from_user(&curr_acceleration_part2, acceleration,
+				sizeof(curr_acceleration_part2)))
 		return -EFAULT;
-	}
 
 	return 0;
 }
@@ -175,7 +171,7 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 	int id;
 
 	new_event = kmalloc(sizeof(*new_event),  GFP_KERNEL);
-       
+
 	if (new_event == NULL)
 		return -ENOMEM;
 
@@ -184,32 +180,26 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 		return -EINVAL;
 	}
 
-	if (copy_from_user(&new_event->motion, acceleration, sizeof(struct acc_motion))) {
+	if (copy_from_user(&new_event->motion, acceleration,
+					sizeof(struct acc_motion))) {
 		kfree(new_event);
 		return -EFAULT;
 	}
 
 	spin_lock(&events_lock);
-
 	id = evtCtx.current_id++;
 	new_event->id = id;
-
 	if (new_event->motion.frq > WINDOW) 
 		new_event->motion.frq = WINDOW;
-
 	INIT_LIST_HEAD(&new_event->events);
 	init_waitqueue_head(&new_event->queue);
 	new_event->deletedFlag = 0;
 	new_event->referenceCount = 0;
 	new_event->wake_up_counter = 0;
-
 	list_add(&new_event->events, &(evtCtx.events));
-
 	spin_unlock(&events_lock);
-
         return id;
 }
-
 
 SYSCALL_DEFINE1(accevt_wait, int, event_id)
 {
@@ -223,7 +213,6 @@ SYSCALL_DEFINE1(accevt_wait, int, event_id)
 		return -EINVAL;
 }
 
-
 SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
 {
 	static struct dev_acceleration *curr_acceleration = &accelerations[0];
@@ -231,14 +220,11 @@ SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
 	struct dev_acceleration *temp;
         static int first_time = 1;
 
-        if (current->cred->uid != 0) {
-                return -EACCES;
-        }
+	if (current->cred->uid != 0)
+		return -EACCES;
 
-        if (acceleration == NULL) {
-                return -EINVAL;
-        }
-
+        if (acceleration == NULL)
+		return -EINVAL;
 
 	spin_lock(&buffer_lock);
 
