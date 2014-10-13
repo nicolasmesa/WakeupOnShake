@@ -15,8 +15,10 @@ static struct context evtCtx = {
 };
 
 static struct deltas buffer[WINDOW];
-static int acc_count = 0;
+static int acc_count;
 static struct dev_acceleration accelerations[2];
+static struct dev_acceleration curr_acceleration_part2;
+
 DEFINE_SPINLOCK(buffer_lock);
 DEFINE_SPINLOCK(events_lock);
 
@@ -41,11 +43,10 @@ int search_and_add(int event_id)
 			event->referenceCount++;
 			my_wake_up_counter = event->wake_up_counter;
 			add_wait_queue(&event->queue, &wait);
-
 			while (my_wake_up_counter == event->wake_up_counter) {
-				prepare_to_wait(&event->queue, &wait, TASK_INTERRUPTIBLE);
-
-				if (signal_pending(current)){
+				prepare_to_wait(&event->queue, &wait,
+					TASK_INTERRUPTIBLE);
+				if (signal_pending(current)) {
 					event->referenceCount--;
 					finish_wait(&event->queue, &wait);
 					spin_unlock(&events_lock);
@@ -56,42 +57,36 @@ int search_and_add(int event_id)
 				schedule();
 				spin_lock(&events_lock);
 			}
-
-			finish_wait(&event->queue, &wait);	
-
+			finish_wait(&event->queue, &wait);
 			event->referenceCount--;
-
-			if (event->deletedFlag) {
+			if (event->deletedFlag)
 				deleted = 1;
-			}
 
 			if (deleted && event->referenceCount <= 0) {
 				list_del(&event->events);
 				kfree(event);
 			}
-
 			break;
 		}
 	}
 
 	spin_unlock(&events_lock);
 
-	if (!found || deleted) {
+	if (!found || deleted)
 		err = -1;
-	}
 
-	return err; 
+	return err;
 }
 
-void add_delta_acceleration(struct dev_acceleration *curr_acceleration, struct dev_acceleration * prev_acceleration)
+void add_delta_acceleration(struct dev_acceleration *curr_acceleration,
+				struct dev_acceleration *prev_acceleration)
 {
-
-	spin_lock(&buffer_lock);
-
-	buffer[acc_count % WINDOW].dlt_x = curr_acceleration->x - prev_acceleration->x;
-	buffer[acc_count % WINDOW].dlt_y = curr_acceleration->y - prev_acceleration->y;
-	buffer[acc_count % WINDOW].dlt_z = curr_acceleration->z - prev_acceleration->z;
-
+	buffer[acc_count % WINDOW].dlt_x =
+				curr_acceleration->x - prev_acceleration->x;
+	buffer[acc_count % WINDOW].dlt_y =
+				curr_acceleration->y - prev_acceleration->y;
+	buffer[acc_count % WINDOW].dlt_z =
+				curr_acceleration->z - prev_acceleration->z;
 	if (buffer[acc_count % WINDOW].dlt_x < 0)
 		buffer[acc_count % WINDOW].dlt_x *= -1;
 
@@ -102,8 +97,6 @@ void add_delta_acceleration(struct dev_acceleration *curr_acceleration, struct d
 		buffer[acc_count % WINDOW].dlt_z *= -1;
 
 	acc_count++;
-
-	spin_unlock(&buffer_lock);
 }
 
 int check_noise(struct deltas *delta)
@@ -130,7 +123,6 @@ void search_and_signal(void)
 	struct motion_event *event;
 	int freq, i, count;
 
-	spin_lock(&buffer_lock);
 	spin_lock(&events_lock);
 
 	count = acc_count > WINDOW ? WINDOW : acc_count;
@@ -156,49 +148,19 @@ void search_and_signal(void)
 
 
 	spin_unlock(&events_lock);
-	spin_unlock(&buffer_lock);
 }
 
-SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *, acceleration)
+SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *,
+				acceleration)
 {
-	static struct dev_acceleration *curr_acceleration = NULL, *prev_acceleration = NULL, *temp;
-	static int first_time = 1;
 
-	if (curr_acceleration == NULL) {
-		curr_acceleration = kmalloc(sizeof(*curr_acceleration), GFP_KERNEL);
-	}
-
-	if (prev_acceleration == NULL) {
-		prev_acceleration = kmalloc(sizeof(*prev_acceleration), GFP_KERNEL);
-	}
-
-	if (current->cred->uid != 0) {
-		printk(KERN_CRIT "Non root user trying to set acceleration: %d\n", current->cred->uid);
-		return -EACCES;
-	}
-
-	if (acceleration == NULL) {
-		printk(KERN_WARNING "Error: acceleration is NULL\n");
+	if (acceleration == NULL)
 		return -EINVAL;
-	}
 
-	if (copy_from_user(curr_acceleration, acceleration, sizeof(*curr_acceleration))) {
-		printk(KERN_WARNING "Error while copying acceleration\n");
+	if (copy_from_user(&curr_acceleration_part2, acceleration,
+				sizeof(curr_acceleration_part2)))
 		return -EFAULT;
-	}
 
-
-	if (!first_time) {
-		add_delta_acceleration(curr_acceleration, prev_acceleration);
-	}
-
-	/* Switch them. curr_acceleration will be overwritten in next call. Not sure if
-	 this counts as a memory leak since memory is never freed */
-	temp = curr_acceleration;
-	curr_acceleration = prev_acceleration;
-	prev_acceleration = temp;
-
-	first_time = 0;
 	return 0;
 }
 
@@ -208,91 +170,74 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 	int id;
 
 	new_event = kmalloc(sizeof(*new_event),  GFP_KERNEL);
-       
+
 	if (new_event == NULL)
 		return -ENOMEM;
 
-	spin_lock(&events_lock);
-
 	if (acceleration == NULL) {
-		spin_unlock(&events_lock);
 		kfree(new_event);
 		return -EINVAL;
 	}
 
-	if (copy_from_user(&new_event->motion, acceleration, sizeof(struct acc_motion))) {
-		spin_unlock(&events_lock);
+	if (copy_from_user(&new_event->motion, acceleration,
+					sizeof(struct acc_motion))) {
 		kfree(new_event);
 		return -EFAULT;
 	}
 
-
+	spin_lock(&events_lock);
 	id = evtCtx.current_id++;
 	new_event->id = id;
-
-	if (new_event->motion.frq > WINDOW) 
+	if (new_event->motion.frq > WINDOW)
 		new_event->motion.frq = WINDOW;
-
 	INIT_LIST_HEAD(&new_event->events);
 	init_waitqueue_head(&new_event->queue);
 	new_event->deletedFlag = 0;
 	new_event->referenceCount = 0;
 	new_event->wake_up_counter = 0;
-
 	list_add(&new_event->events, &(evtCtx.events));
-
 	spin_unlock(&events_lock);
-
-        return id;
+	return id;
 }
-
 
 SYSCALL_DEFINE1(accevt_wait, int, event_id)
 {
-
 	if (event_id < 1)
 		return -EINVAL;
 
 	if (search_and_add(event_id) == 0)
 		return 0;
-	else
-		return -EINVAL;
+	return -EINVAL;
 }
-
 
 SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
 {
 	static struct dev_acceleration *curr_acceleration = &accelerations[0];
 	static struct dev_acceleration *prev_acceleration = &accelerations[1];
 	struct dev_acceleration *temp;
-        static int first_time = 1;
+	static int first_time = 1;
 
-        if (current->cred->uid != 0) {
-                return -EACCES;
-        }
+	if (current->cred->uid != 0)
+		return -EACCES;
+	if (acceleration == NULL)
+		return -EINVAL;
+	spin_lock(&buffer_lock);
+	if (copy_from_user(curr_acceleration, acceleration,
+				sizeof(*curr_acceleration)))
+		return -EFAULT;
 
-        if (acceleration == NULL) {
-                return -EINVAL;
-        }
-
-        if (copy_from_user(curr_acceleration, acceleration, sizeof(*curr_acceleration))) {
-                return -EFAULT;
-        }
-
-
-        if (!first_time) {
-                add_delta_acceleration(curr_acceleration, prev_acceleration);
+	if (!first_time) {
+		add_delta_acceleration(curr_acceleration, prev_acceleration);
 		search_and_signal();
-        }
-
-        /* Switch them. curr_acceleration will be overwritten in next call. Not sure if
-         this counts as a memory leak since memory is never freed */
-        temp = curr_acceleration;
-        curr_acceleration = prev_acceleration;
-        prev_acceleration = temp;
-
-        first_time = 0;
-        return 0;
+	}
+	/* Switch them. curr_acceleration will be overwritten in next call. Not
+	sure if this counts as a memory leak since memory is never freed */
+	temp = curr_acceleration;
+	curr_acceleration = prev_acceleration;
+	prev_acceleration = temp;
+	first_time = 0;
+	spin_unlock(&buffer_lock);
+	return 0;
 }
 
 SYSCALL_DEFINE1(accevt_destroy, int, event_id)
@@ -321,12 +266,10 @@ SYSCALL_DEFINE1(accevt_destroy, int, event_id)
 				wake_up_all(&event->queue);
 			}
 
-			break;	
+			break;
 		}
 	}
-
 	spin_unlock(&events_lock);
-
 	if (!found || deleted)
 		ret = -EINVAL;
 

@@ -16,7 +16,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <hardware/sensors.h> /* <-- This is a good place to look! */
-#include "../flo-kernel/include/linux/akm8975.h" 
+#include "../flo-kernel/include/linux/akm8975.h"
 #include "acceleration.h"
 
 /* from sensors.c */
@@ -36,9 +36,7 @@
 #define __NR_accevt_wait 380
 #define __NR_accevt_signal 381
 #define __NR_accevt_destroy 382
-
-#define TIME_BETWEEN_POLLS 200 
-
+#define TIME_BETWEEN_POLLS 200
 
 /* set to 1 for a bit of debug output */
 #if 1
@@ -56,7 +54,7 @@ static void enumerate_sensors(const struct sensors_module_t *sensors);
 
 int set_acceleration(struct dev_acceleration  *acceleration)
 {
-	return syscall(__NR_set_acceleration, acceleration);	
+	return syscall(__NR_set_acceleration, acceleration);
 }
 
 int accevt_create(struct acc_motion *acceleration)
@@ -69,7 +67,7 @@ int accevt_wait(int event_id)
 	return syscall(__NR_accevt_wait, event_id);
 }
 
-int accevt_signal(struct dev_acceleration * acceleration)
+int accevt_signal(struct dev_acceleration *acceleration)
 {
 	return syscall(__NR_accevt_signal, acceleration);
 }
@@ -82,13 +80,14 @@ int accevt_destroy(int event_id)
 
 static int poll_sensor_data(struct sensors_poll_device_t *sensors_device)
 {
-    const size_t numEventMax = 16;
-    const size_t minBufferSize = numEventMax;
-    struct dev_acceleration acceleration;
-    sensors_event_t buffer[minBufferSize];
-	printf("Befor sensors_dev call\n");
+	const size_t numEventMax = 16;
+	const size_t minBufferSize = numEventMax;
+	struct dev_acceleration acceleration;
+	sensors_event_t buffer[minBufferSize];
 
-	ssize_t count = sensors_device->poll(sensors_device, buffer, minBufferSize);
+	printf("Befor sensors_dev call\n");
+	ssize_t count = sensors_device->poll(sensors_device, buffer,
+		minBufferSize);
 	int i, ret;
 
 	printf("Here\n");
@@ -97,20 +96,15 @@ static int poll_sensor_data(struct sensors_poll_device_t *sensors_device)
 			continue;
 
 		/* At this point we should have valid data*/
-        /* Scale it and pass it to kernel */
-		/*dbg("Acceleration: x= %0.2f, y= %0.2f, "
-			"z= %0.2f\n", buffer[i].acceleration.x,
-			buffer[i].acceleration.y, buffer[i].acceleration.z);*/
+		/* Scale it and pass it to kernel */
 
 		acceleration.x = buffer[i].acceleration.x * 100;
 		acceleration.y = buffer[i].acceleration.y * 100;
 		acceleration.z = buffer[i].acceleration.z * 100;
 
 		ret = accevt_signal(&acceleration);
-
-		if (ret < 0) {
+		if (ret < 0)
 			printf("Error setting acceleration\n");
-		}
 	}
 	return 0;
 }
@@ -124,10 +118,9 @@ int main(int argc, char **argv)
 	struct sensors_poll_device_t *sensors_device = NULL;
 	int pid;
 
-	pid = fork();   
-                        
-	if(pid == 0) {
-        	if (setsid() < 0){
+	pid = fork();
+	if (pid == 0) {
+		if (setsid() < 0) {
 			printf("Error: %s\n", strerror(errno));
 			exit(1);
 		}
@@ -147,7 +140,7 @@ int main(int argc, char **argv)
 			exit(1);
 		}
 
-		if(close(2) < 0) {
+		if (close(2) < 0) {
 			printf("Error: %s\n", strerror(errno));
 			exit(1);
 		}
@@ -170,8 +163,6 @@ int main(int argc, char **argv)
 
 	/* Fill in daemon implementation around here */
 	printf("turn me into a daemon!\n");
-	
-
 	while (1) {
 		poll_sensor_data(sensors_device);
 		usleep(TIME_BETWEEN_POLLS);
@@ -186,9 +177,8 @@ int main(int argc, char **argv)
 static int open_sensors(struct sensors_module_t **mSensorModule,
 			struct sensors_poll_device_t **mSensorDevice)
 {
-   
 	int err = hw_get_module(SENSORS_HARDWARE_MODULE_ID,
-				     (hw_module_t const**)mSensorModule);
+		(hw_module_t const **)mSensorModule);
 
 	if (err) {
 		printf("couldn't load %s module (%s)",
@@ -209,10 +199,13 @@ static int open_sensors(struct sensors_module_t **mSensorModule,
 		return -1;
 
 	const struct sensor_t *list;
-	ssize_t count = (*mSensorModule)->get_sensors_list(*mSensorModule, &list);
+	ssize_t count = (*mSensorModule)->get_sensors_list
+				(*mSensorModule, &list);
 	size_t i;
-	for (i=0 ; i<(size_t)count ; i++) {
-		(*mSensorDevice)->setDelay(*mSensorDevice, list[i].handle, TIME_BETWEEN_POLLS * 1000000); 
+
+	for (i = 0 ; i < (size_t)count ; i++) {
+		(*mSensorDevice)->setDelay(*mSensorDevice, list[i].handle,
+			TIME_BETWEEN_POLLS * 1000000);
 		(*mSensorDevice)->activate(*mSensorDevice, list[i].handle, 1);
 	}
 
@@ -223,9 +216,9 @@ static void enumerate_sensors(const struct sensors_module_t *sensors)
 {
 	int nr, s;
 	const struct sensor_t *slist = NULL;
+	
 	if (!sensors)
 		printf("going to fail\n");
-
 	nr = sensors->get_sensors_list((struct sensors_module_t *)sensors,
 					&slist);
 	if (nr < 1 || slist == NULL) {
@@ -242,6 +235,5 @@ static void enumerate_sensors(const struct sensors_module_t *sensors)
 		/* Awful hack to make it work on emulator */
 		if (slist[s].type == 1 && slist[s].handle == 0)
 			effective_sensor = 0; /*the sensor ID*/
-
-                }
+	}
 }
