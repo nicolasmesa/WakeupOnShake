@@ -43,10 +43,9 @@ int search_and_add(int event_id)
 			event->referenceCount++;
 			my_wake_up_counter = event->wake_up_counter;
 			add_wait_queue(&event->queue, &wait);
-
 			while (my_wake_up_counter == event->wake_up_counter) {
-			prepare_to_wait(&event->queue, &wait, TASK_INTERRUPTIBLE);
-
+				prepare_to_wait(&event->queue, &wait,
+					TASK_INTERRUPTIBLE);
 				if (signal_pending(current)) {
 					event->referenceCount--;
 					finish_wait(&event->queue, &wait);
@@ -189,7 +188,7 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 	spin_lock(&events_lock);
 	id = evtCtx.current_id++;
 	new_event->id = id;
-	if (new_event->motion.frq > WINDOW) 
+	if (new_event->motion.frq > WINDOW)
 		new_event->motion.frq = WINDOW;
 	INIT_LIST_HEAD(&new_event->events);
 	init_waitqueue_head(&new_event->queue);
@@ -198,19 +197,17 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 	new_event->wake_up_counter = 0;
 	list_add(&new_event->events, &(evtCtx.events));
 	spin_unlock(&events_lock);
-        return id;
+	return id;
 }
 
 SYSCALL_DEFINE1(accevt_wait, int, event_id)
 {
-
 	if (event_id < 1)
 		return -EINVAL;
 
 	if (search_and_add(event_id) == 0)
 		return 0;
-	else
-		return -EINVAL;
+	return -EINVAL;
 }
 
 SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
@@ -218,37 +215,29 @@ SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
 	static struct dev_acceleration *curr_acceleration = &accelerations[0];
 	static struct dev_acceleration *prev_acceleration = &accelerations[1];
 	struct dev_acceleration *temp;
-        static int first_time = 1;
+	static int first_time = 1;
 
 	if (current->cred->uid != 0)
 		return -EACCES;
-
-        if (acceleration == NULL)
+	if (acceleration == NULL)
 		return -EINVAL;
-
 	spin_lock(&buffer_lock);
+	if (copy_from_user(curr_acceleration, acceleration,
+				sizeof(*curr_acceleration)))
+		return -EFAULT;
 
-        if (copy_from_user(curr_acceleration, acceleration, sizeof(*curr_acceleration))) {
-                return -EFAULT;
-        }
-
-
-        if (!first_time) {
-                add_delta_acceleration(curr_acceleration, prev_acceleration);
+	if (!first_time) {
+		add_delta_acceleration(curr_acceleration, prev_acceleration);
 		search_and_signal();
-        }
-
-        /* Switch them. curr_acceleration will be overwritten in next call. Not sure if
-         this counts as a memory leak since memory is never freed */
-        temp = curr_acceleration;
-        curr_acceleration = prev_acceleration;
-        prev_acceleration = temp;
-
-        first_time = 0;
-
+	}
+	/* Switch them. curr_acceleration will be overwritten in next call. Not
+	sure if this counts as a memory leak since memory is never freed */
+	temp = curr_acceleration;
+	curr_acceleration = prev_acceleration;
+	prev_acceleration = temp;
+	first_time = 0;
 	spin_unlock(&buffer_lock);
-
-        return 0;
+	return 0;
 }
 
 SYSCALL_DEFINE1(accevt_destroy, int, event_id)
@@ -277,12 +266,10 @@ SYSCALL_DEFINE1(accevt_destroy, int, event_id)
 				wake_up_all(&event->queue);
 			}
 
-			break;	
+			break;
 		}
 	}
-
 	spin_unlock(&events_lock);
-
 	if (!found || deleted)
 		ret = -EINVAL;
 
