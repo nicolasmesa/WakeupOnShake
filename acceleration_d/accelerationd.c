@@ -216,7 +216,7 @@ static void enumerate_sensors(const struct sensors_module_t *sensors)
 {
 	int nr, s;
 	const struct sensor_t *slist = NULL;
-	
+
 	if (!sensors)
 		printf("going to fail\n");
 	nr = sensors->get_sensors_list((struct sensors_module_t *)sensors,
