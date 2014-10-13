@@ -86,8 +86,6 @@ int search_and_add(int event_id)
 void add_delta_acceleration(struct dev_acceleration *curr_acceleration, struct dev_acceleration * prev_acceleration)
 {
 
-	spin_lock(&buffer_lock);
-
 	buffer[acc_count % WINDOW].dlt_x = curr_acceleration->x - prev_acceleration->x;
 	buffer[acc_count % WINDOW].dlt_y = curr_acceleration->y - prev_acceleration->y;
 	buffer[acc_count % WINDOW].dlt_z = curr_acceleration->z - prev_acceleration->z;
@@ -102,8 +100,6 @@ void add_delta_acceleration(struct dev_acceleration *curr_acceleration, struct d
 		buffer[acc_count % WINDOW].dlt_z *= -1;
 
 	acc_count++;
-
-	spin_unlock(&buffer_lock);
 }
 
 int check_noise(struct deltas *delta)
@@ -130,7 +126,6 @@ void search_and_signal(void)
 	struct motion_event *event;
 	int freq, i, count;
 
-	spin_lock(&buffer_lock);
 	spin_lock(&events_lock);
 
 	count = acc_count > WINDOW ? WINDOW : acc_count;
@@ -156,7 +151,6 @@ void search_and_signal(void)
 
 
 	spin_unlock(&events_lock);
-	spin_unlock(&buffer_lock);
 }
 
 SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *, acceleration)
@@ -275,6 +269,9 @@ SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
                 return -EINVAL;
         }
 
+
+	spin_lock(&buffer_lock);
+
         if (copy_from_user(curr_acceleration, acceleration, sizeof(*curr_acceleration))) {
                 return -EFAULT;
         }
@@ -292,6 +289,9 @@ SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
         prev_acceleration = temp;
 
         first_time = 0;
+
+	spin_unlock(&buffer_lock);
+
         return 0;
 }
 
