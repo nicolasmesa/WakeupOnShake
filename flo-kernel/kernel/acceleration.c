@@ -252,7 +252,7 @@ SYSCALL_DEFINE1(accevt_wait, int, event_id)
 	if (event_id < 1)
 		return -EINVAL;
 
-	if (!search_and_add(event_id))
+	if (search_and_add(event_id) == 0)
 		return 0;
 	else
 		return -EINVAL;
