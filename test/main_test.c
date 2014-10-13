@@ -20,80 +20,64 @@
 
 int set_acceleration(struct dev_acceleration  *acceleration)
 {
-        return syscall(__NR_set_acceleration, acceleration);
+	return syscall(__NR_set_acceleration, acceleration);
 }
 
 int accevt_create(struct acc_motion *acceleration)
 {
-        return syscall(__NR_accevt_create, acceleration);
+	return syscall(__NR_accevt_create, acceleration);
 }
 
 int accevt_wait(int event_id)
 {
-        return syscall(__NR_accevt_wait, event_id);
+	return syscall(__NR_accevt_wait, event_id);
 }
 
-int accevt_signal(struct dev_acceleration * acceleration)
+int accevt_signal(struct dev_acceleration *acceleration)
 {
-        return syscall(__NR_accevt_signal, acceleration);
+	return syscall(__NR_accevt_signal, acceleration);
 }
 
 int accevt_destroy(int event_id)
 {
-        return syscall(__NR_accevt_destroy, event_id);
+	return syscall(__NR_accevt_destroy, event_id);
 }
 
 
-int main(int argc, char ** argv)
+int main(int argc, char **argv)
 {
-	
 	int fork_ctr = 0;
 	pid_t pid;
 	int set_freq = SET_FRQ;
 	struct acc_motion myAcceleration;
 	int event_id = 0;
-	for(fork_ctr = 0; fork_ctr < NUM_PROCS; fork_ctr++)
-	{
+
+	for (fork_ctr = 0; fork_ctr < NUM_PROCS; fork_ctr++) {
 		pid = fork();
 		if (pid == 0)
 			break;
-	
 	}
-	
-	if (pid == 0 ) {
-	
-	srand(getpid());	
-	myAcceleration.dlt_x = rand()%100;
-	myAcceleration.dlt_y = rand()%100;
-	myAcceleration.dlt_z = rand()%100;
-	myAcceleration.frq = set_freq;
-	event_id = accevt_create(&myAcceleration);
-	printf("%d %d %d %d %d %d\n", getpid(), myAcceleration.dlt_x, myAcceleration.dlt_y, myAcceleration.dlt_z, myAcceleration.frq, event_id);
-
-	//setsid();
-	//close(0);
-	//close(1);
-	//close(2);
+	if (pid == 0) {
+		srand(getpid());
+		myAcceleration.dlt_x = rand()%100;
+		myAcceleration.dlt_y = rand()%100;
+		myAcceleration.dlt_z = rand()%100;
+		myAcceleration.frq = set_freq;
+		event_id = accevt_create(&myAcceleration);
+		printf("%d %d %d %d %d %d\n", getpid(), myAcceleration.dlt_x,
+myAcceleration.dlt_y, myAcceleration.dlt_z, myAcceleration.frq, event_id);
 
 	int wait_ret = 0;
-	wait_ret = accevt_wait(event_id);
 
+	wait_ret = accevt_wait(event_id);
 	printf("%d detected needed shake and ended\n", getpid());
 
 	/*Tested by sending the signals here using the signaler binary*/
 
 	wait_ret = accevt_destroy(event_id);
 
-	//exit(0);
-
-	}
-	else {
-
-	//	wait(&pid);
+	} else {
 		exit(0);
 	}
-
-
-
-	return 0;			
+	return 0;
 }

@@ -14,31 +14,31 @@
 
 int set_acceleration(struct dev_acceleration  *acceleration)
 {
-        return syscall(__NR_set_acceleration, acceleration);
+	return syscall(__NR_set_acceleration, acceleration);
 }
 
 int accevt_create(struct acc_motion *acceleration)
 {
-        return syscall(__NR_accevt_create, acceleration);
+	return syscall(__NR_accevt_create, acceleration);
 }
 
 int accevt_wait(int event_id)
 {
-        return syscall(__NR_accevt_wait, event_id);
+	return syscall(__NR_accevt_wait, event_id);
 }
 
-int accevt_signal(struct dev_acceleration * acceleration)
+int accevt_signal(struct dev_acceleration *acceleration)
 {
-        return syscall(__NR_accevt_signal, acceleration);
+	return syscall(__NR_accevt_signal, acceleration);
 }
 
 int accevt_destroy(int event_id)
 {
-        return syscall(__NR_accevt_destroy, event_id);
+	return syscall(__NR_accevt_destroy, event_id);
 }
 
 
-int main(int argc, char ** argv)
+int main(int argc, char **argv)
 {
 	struct acc_motion myAcceleration;
 	int dlt_x, dlt_y, dlt_z, freq, id;
@@ -64,6 +64,5 @@ int main(int argc, char ** argv)
 		printf("Error: %s\n", strerror(errno));
 	else
 		printf("The returned id for the event is %d\n", id);
-
-	return 0;			
+	return 0;
 }
