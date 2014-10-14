@@ -217,7 +217,7 @@ SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
 	struct dev_acceleration *temp;
 	static int first_time = 1;
 
-	if (current->cred->uid != 0)
+	if (get_current_user()->uid != 0)
 		return -EACCES;
 	if (acceleration == NULL)
 		return -EINVAL;

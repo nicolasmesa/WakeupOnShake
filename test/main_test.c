@@ -59,9 +59,9 @@ int main(int argc, char **argv)
 	}
 	if (pid == 0) {
 		srand(getpid());
-		myAcceleration.dlt_x = rand()%100;
-		myAcceleration.dlt_y = rand()%100;
-		myAcceleration.dlt_z = rand()%100;
+		myAcceleration.dlt_x = rand()%300 + 100;
+		myAcceleration.dlt_y = rand()%300 + 100;
+		myAcceleration.dlt_z = rand()%300 + 100;
 		myAcceleration.frq = set_freq;
 		event_id = accevt_create(&myAcceleration);
 		printf("%d %d %d %d %d %d\n", getpid(), myAcceleration.dlt_x,
@@ -70,13 +70,16 @@ myAcceleration.dlt_y, myAcceleration.dlt_z, myAcceleration.frq, event_id);
 	int wait_ret = 0;
 
 	wait_ret = accevt_wait(event_id);
-	printf("%d detected needed shake and ended\n", getpid());
-
+	if (wait_ret == 0)
+		printf("%d detected needed shake and ended\n", getpid());
+	else
+		printf("%d ended because of another event\n", getpid());
 	/*Tested by sending the signals here using the signaler binary*/
 
 	wait_ret = accevt_destroy(event_id);
 
 	} else {
+		sleep(60);
 		exit(0);
 	}
 	return 0;
