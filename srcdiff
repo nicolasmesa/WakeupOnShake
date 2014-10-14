@@ -1,0 +1,1212 @@
+diff --git a/acceleration_d/acceleration.h b/acceleration_d/acceleration.h
+index efc87d4..1912777 100644
+--- a/acceleration_d/acceleration.h
++++ b/acceleration_d/acceleration.h
+@@ -1,10 +1,19 @@
+ #ifndef _ACCELERATION_H
+ #define _ACCELERATION_H
+ 
+-struct dev_acceleration{
++struct dev_acceleration {
+ 	int x;
+ 	int y;
+ 	int z;
+ };
+ 
++struct acc_motion {
++	unsigned int dlt_x; /* +/- around X-axis */
++	unsigned int dlt_y; /* +/- around Y-axis */
++	unsigned int dlt_z; /* +/- around Z-axis */
++
++	unsigned int frq;   /* Number of samples that satisfies:
++		sum_each_sample(dlt_x + dlt_y + dlt_z) > NOISE */
++};
++
+ #endif
+diff --git a/acceleration_d/accelerationd.c b/acceleration_d/accelerationd.c
+index 6d9c66c..b82b8bd 100755
+--- a/acceleration_d/accelerationd.c
++++ b/acceleration_d/accelerationd.c
+@@ -13,8 +13,10 @@
+ #include <unistd.h>
+ #include <sys/ioctl.h>
+ #include <hardware/hardware.h>
++#include <sys/types.h>
++#include <sys/wait.h>
+ #include <hardware/sensors.h> /* <-- This is a good place to look! */
+-#include "../flo-kernel/include/linux/akm8975.h" 
++#include "../flo-kernel/include/linux/akm8975.h"
+ #include "acceleration.h"
+ 
+ /* from sensors.c */
+@@ -30,7 +32,11 @@
+ 
+ 
+ #define __NR_set_acceleration 378
+-
++#define __NR_accevt_create 379
++#define __NR_accevt_wait 380
++#define __NR_accevt_signal 381
++#define __NR_accevt_destroy 382
++#define TIME_BETWEEN_POLLS 200
+ 
+ /* set to 1 for a bit of debug output */
+ #if 1
+@@ -46,25 +52,60 @@ static int open_sensors(struct sensors_module_t **hw_module,
+ 			struct sensors_poll_device_t **poll_device);
+ static void enumerate_sensors(const struct sensors_module_t *sensors);
+ 
++int set_acceleration(struct dev_acceleration  *acceleration)
++{
++	return syscall(__NR_set_acceleration, acceleration);
++}
++
++int accevt_create(struct acc_motion *acceleration)
++{
++	return syscall(__NR_accevt_create, acceleration);
++}
++
++int accevt_wait(int event_id)
++{
++	return syscall(__NR_accevt_wait, event_id);
++}
++
++int accevt_signal(struct dev_acceleration *acceleration)
++{
++	return syscall(__NR_accevt_signal, acceleration);
++}
++
++int accevt_destroy(int event_id)
++{
++	return syscall(__NR_accevt_destroy, event_id);
++}
++
++
+ static int poll_sensor_data(struct sensors_poll_device_t *sensors_device)
+ {
+-    const size_t numEventMax = 16;
+-    const size_t minBufferSize = numEventMax;
+-    sensors_event_t buffer[minBufferSize];
+-	ssize_t count = sensors_device->poll(sensors_device, buffer, minBufferSize);
+-	int i;
++	const size_t numEventMax = 16;
++	const size_t minBufferSize = numEventMax;
++	struct dev_acceleration acceleration;
++	sensors_event_t buffer[minBufferSize];
+ 
++	printf("Befor sensors_dev call\n");
++	ssize_t count = sensors_device->poll(sensors_device, buffer,
++		minBufferSize);
++	int i, ret;
+ 
++	printf("Here\n");
+ 	for (i = 0; i < count; ++i) {
+ 		if (buffer[i].sensor != effective_sensor)
+ 			continue;
+ 
+ 		/* At this point we should have valid data*/
+-        /* Scale it and pass it to kernel*/
+-		dbg("Acceleration: x= %0.2f, y= %0.2f, "
+-			"z= %0.2f\n", buffer[i].acceleration.x,
+-			buffer[i].acceleration.y, buffer[i].acceleration.z);
++		/* Scale it and pass it to kernel */
+ 
++		acceleration.x = buffer[i].acceleration.x * 100;
++		acceleration.y = buffer[i].acceleration.y * 100;
++		acceleration.z = buffer[i].acceleration.z * 100;
++
++		/* ret = set_acceleration(&acceleration); */
++		ret = accevt_signal(&acceleration);
++		if (ret < 0)
++			printf("Error setting acceleration\n");
+ 	}
+ 	return 0;
+ }
+@@ -76,6 +117,41 @@ int main(int argc, char **argv)
+ 	effective_sensor = -1;
+ 	struct sensors_module_t *sensors_module = NULL;
+ 	struct sensors_poll_device_t *sensors_device = NULL;
++	int pid;
++
++	pid = fork();
++	if (pid == 0) {
++		if (setsid() < 0) {
++			printf("Error: %s\n", strerror(errno));
++			exit(1);
++		}
++
++		if (chdir("/") < 0) {
++			printf("Error: %s\n", strerror(errno));
++			exit(1);
++		}
++
++		if (close(0) < 0) {
++			printf("Error: %s\n", strerror(errno));
++			exit(1);
++		}
++
++		if (close(1) < 0) {
++			printf("Error: %s\n", strerror(errno));
++			exit(1);
++		}
++
++		if (close(2) < 0) {
++			printf("Error: %s\n", strerror(errno));
++			exit(1);
++		}
++	} else if (pid > 0) {
++		exit(0);
++	} else {
++		printf("Error: %s\n", strerror(errno));
++		exit(errno);
++	}
++
+ 
+ 	printf("Opening sensors...\n");
+ 	if (open_sensors(&sensors_module,
+@@ -90,6 +166,7 @@ int main(int argc, char **argv)
+ 	printf("turn me into a daemon!\n");
+ 	while (1) {
+ 		poll_sensor_data(sensors_device);
++		usleep(TIME_BETWEEN_POLLS);
+ 	}
+ 
+ 	return EXIT_SUCCESS;
+@@ -101,9 +178,8 @@ int main(int argc, char **argv)
+ static int open_sensors(struct sensors_module_t **mSensorModule,
+ 			struct sensors_poll_device_t **mSensorDevice)
+ {
+-   
+ 	int err = hw_get_module(SENSORS_HARDWARE_MODULE_ID,
+-				     (hw_module_t const**)mSensorModule);
++		(hw_module_t const **)mSensorModule);
+ 
+ 	if (err) {
+ 		printf("couldn't load %s module (%s)",
+@@ -124,10 +200,15 @@ static int open_sensors(struct sensors_module_t **mSensorModule,
+ 		return -1;
+ 
+ 	const struct sensor_t *list;
+-	ssize_t count = (*mSensorModule)->get_sensors_list(*mSensorModule, &list);
++	ssize_t count = (*mSensorModule)->get_sensors_list
++				(*mSensorModule, &list);
+ 	size_t i;
+-	for (i=0 ; i<(size_t)count ; i++)
++
++	for (i = 0 ; i < (size_t)count ; i++) {
++		(*mSensorDevice)->setDelay(*mSensorDevice, list[i].handle,
++			TIME_BETWEEN_POLLS * 1000000);
+ 		(*mSensorDevice)->activate(*mSensorDevice, list[i].handle, 1);
++	}
+ 
+ 	return 0;
+ }
+@@ -136,9 +217,9 @@ static void enumerate_sensors(const struct sensors_module_t *sensors)
+ {
+ 	int nr, s;
+ 	const struct sensor_t *slist = NULL;
++
+ 	if (!sensors)
+ 		printf("going to fail\n");
+-
+ 	nr = sensors->get_sensors_list((struct sensors_module_t *)sensors,
+ 					&slist);
+ 	if (nr < 1 || slist == NULL) {
+@@ -155,6 +236,5 @@ static void enumerate_sensors(const struct sensors_module_t *sensors)
+ 		/* Awful hack to make it work on emulator */
+ 		if (slist[s].type == 1 && slist[s].handle == 0)
+ 			effective_sensor = 0; /*the sensor ID*/
+-
+-                }
++	}
+ }
+diff --git a/flo-kernel/arch/arm/include/asm/unistd.h b/flo-kernel/arch/arm/include/asm/unistd.h
+index 512cd14..4544415 100644
+--- a/flo-kernel/arch/arm/include/asm/unistd.h
++++ b/flo-kernel/arch/arm/include/asm/unistd.h
+@@ -404,6 +404,11 @@
+ #define __NR_setns			(__NR_SYSCALL_BASE+375)
+ #define __NR_process_vm_readv		(__NR_SYSCALL_BASE+376)
+ #define __NR_process_vm_writev		(__NR_SYSCALL_BASE+377)
++#define __NR_set_acceleration		(__NR_SYSCALL_BASE+378)
++#define __NR_accevt_create		(__NR_SYSCALL_BASE+379)
++#define __NR_accevt_wait		(__NR_SYSCALL_BASE+380)
++#define __NR_accevt_signal		(__NR_SYSCALL_BASE+381)
++#define __NR_accevt_destroy		(__NR_SYSCALL_BASE+382)
+ 
+ /*
+  * The following SWIs are ARM private.
+diff --git a/flo-kernel/arch/arm/kernel/calls.S b/flo-kernel/arch/arm/kernel/calls.S
+index 463ff4a..02079b0 100644
+--- a/flo-kernel/arch/arm/kernel/calls.S
++++ b/flo-kernel/arch/arm/kernel/calls.S
+@@ -387,6 +387,11 @@
+ /* 375 */	CALL(sys_setns)
+ 		CALL(sys_process_vm_readv)
+ 		CALL(sys_process_vm_writev)
++		CALL(sys_set_acceleration)
++		CALL(sys_accevt_create)
++/* 380 */	CALL(sys_accevt_wait)
++		CALL(sys_accevt_signal)
++		CALL(sys_accevt_destroy)
+ #ifndef syscalls_counted
+ .equ syscalls_padding, ((NR_syscalls + 3) & ~3) - NR_syscalls
+ #define syscalls_counted
+diff --git a/flo-kernel/include/linux/acceleration.h b/flo-kernel/include/linux/acceleration.h
+new file mode 100644
+index 0000000..3d4383e
+--- /dev/null
++++ b/flo-kernel/include/linux/acceleration.h
+@@ -0,0 +1,56 @@
++#ifndef _DEV_ACCELERATION_H
++#define _DEV_ACCELERATION_H
++
++#include <linux/list.h>
++#include <linux/wait.h>
++
++struct dev_acceleration {
++	int x; /* acceleration along X-axis */
++	int y; /* acceleration along Y-axis */
++	int z; /* acceleration along Z-axis */
++};
++
++
++/*Define the noise*/
++#define NOISE 10
++
++/*Define the window*/
++#define WINDOW 20
++
++/*
++* Define the motion.
++* The motion give the baseline for an EVENT.
++*/
++struct acc_motion {
++
++	unsigned int dlt_x; /* +/- around X-axis */
++	unsigned int dlt_y; /* +/- around Y-axis */
++	unsigned int dlt_z; /* +/- around Z-axis */
++
++	unsigned int frq;   /* Number of samples that satisfies:
++			sum_each_sample(dlt_x + dlt_y + dlt_z) > NOISE */
++};
++
++struct motion_event {
++	int id;
++	int wake_up_counter;
++	struct acc_motion motion;
++	int referenceCount;
++	int deletedFlag;
++	wait_queue_head_t queue;
++	struct list_head events;
++};
++
++
++struct context {
++	int current_id;
++	struct list_head events;
++};
++
++struct deltas {
++	int dlt_x;
++	int dlt_y;
++	int dlt_z;
++};
++
++#endif
+diff --git a/flo-kernel/include/linux/syscalls.h b/flo-kernel/include/linux/syscalls.h
+index 3de3acb..3bf8561 100644
+--- a/flo-kernel/include/linux/syscalls.h
++++ b/flo-kernel/include/linux/syscalls.h
+@@ -76,6 +76,7 @@ struct file_handle;
+ #include <linux/quota.h>
+ #include <linux/key.h>
+ #include <trace/syscall.h>
++#include <linux/acceleration.h>
+ 
+ #define __SC_DECL1(t1, a1)	t1 a1
+ #define __SC_DECL2(t2, a2, ...) t2 a2, __SC_DECL1(__VA_ARGS__)
+@@ -266,7 +267,12 @@ asmlinkage long sys_nanosleep(struct timespec __user *rqtp, struct timespec __us
+ asmlinkage long sys_alarm(unsigned int seconds);
+ asmlinkage long sys_getpid(void);
+ asmlinkage long sys_getppid(void);
+-asmlinkage long sys_getuid(void);
++asmlinkage long sys_set_acceleration(struct dev_acceleration __user
++		*acceleration);
++asmlinkage long sys_accevt_create(struct acc_motion __user *acceleration);
++asmlinkage long sys_accevt_wait(int event_id);
++asmlinkage long sys_accevt_signal(struct dev_acceleration __user *acceleration);
++asmlinkage long sys_accevt_destroy(int event_id);
+ asmlinkage long sys_geteuid(void);
+ asmlinkage long sys_getgid(void);
+ asmlinkage long sys_getegid(void);
+diff --git a/flo-kernel/kernel/acceleration.c b/flo-kernel/kernel/acceleration.c
+new file mode 100644
+index 0000000..e4b5471
+--- /dev/null
++++ b/flo-kernel/kernel/acceleration.c
+@@ -0,0 +1,286 @@
++#include <linux/unistd.h>
++#include <linux/sched.h>
++#include <linux/linkage.h>
++#include <linux/kernel.h>
++#include <linux/syscalls.h>
++#include <linux/uaccess.h>
++#include <linux/slab.h>
++#include <linux/acceleration.h>
++#include <linux/spinlock.h>
++#include <linux/wait.h>
++
++static struct context evtCtx = {
++	.current_id = 1,
++	.events = LIST_HEAD_INIT(evtCtx.events),
++};
++
++static struct deltas buffer[WINDOW];
++static int acc_count;
++static struct dev_acceleration accelerations[2];
++static struct dev_acceleration curr_acceleration_part2;
++
++DEFINE_SPINLOCK(buffer_lock);
++DEFINE_SPINLOCK(events_lock);
++
++int search_and_add(int event_id)
++{
++	int err = 0, found = 0, my_wake_up_counter, deleted = 0;
++	struct motion_event *event, *temp;
++	DEFINE_WAIT(wait);
++
++	spin_lock(&events_lock);
++
++
++	list_for_each_entry_safe(event, temp, &(evtCtx.events), events) {
++		if (event->id == event_id) {
++			found = 1;
++
++			if (event->deletedFlag) {
++				deleted = 1;
++				break;
++			}
++
++			event->referenceCount++;
++			my_wake_up_counter = event->wake_up_counter;
++			add_wait_queue(&event->queue, &wait);
++			while (my_wake_up_counter == event->wake_up_counter) {
++				prepare_to_wait(&event->queue, &wait,
++					TASK_INTERRUPTIBLE);
++				if (signal_pending(current)) {
++					event->referenceCount--;
++					finish_wait(&event->queue, &wait);
++					spin_unlock(&events_lock);
++					return -2;
++				}
++
++				spin_unlock(&events_lock);
++				schedule();
++				spin_lock(&events_lock);
++			}
++			finish_wait(&event->queue, &wait);
++			event->referenceCount--;
++			if (event->deletedFlag)
++				deleted = 1;
++
++			if (deleted && event->referenceCount <= 0) {
++				list_del(&event->events);
++				kfree(event);
++			}
++			break;
++		}
++	}
++
++	spin_unlock(&events_lock);
++
++	if (!found || deleted)
++		err = -1;
++
++	return err;
++}
++
++void add_delta_acceleration(struct dev_acceleration *curr_acceleration,
++				struct dev_acceleration *prev_acceleration)
++{
++	buffer[acc_count % WINDOW].dlt_x =
++				curr_acceleration->x - prev_acceleration->x;
++	buffer[acc_count % WINDOW].dlt_y =
++				curr_acceleration->y - prev_acceleration->y;
++	buffer[acc_count % WINDOW].dlt_z =
++				curr_acceleration->z - prev_acceleration->z;
++	if (buffer[acc_count % WINDOW].dlt_x < 0)
++		buffer[acc_count % WINDOW].dlt_x *= -1;
++
++	if (buffer[acc_count % WINDOW].dlt_y < 0)
++		buffer[acc_count % WINDOW].dlt_y *= -1;
++
++	if (buffer[acc_count % WINDOW].dlt_z < 0)
++		buffer[acc_count % WINDOW].dlt_z *= -1;
++
++	acc_count++;
++}
++
++int check_noise(struct deltas *delta)
++{
++	return (delta->dlt_x + delta->dlt_y + delta->dlt_z) >= NOISE;
++}
++
++int delta_is_relevant(struct deltas *deltas, struct acc_motion *event)
++{
++	if (deltas->dlt_x < event->dlt_x)
++		return 0;
++
++	if (deltas->dlt_y < event->dlt_y)
++		return 0;
++
++	if (deltas->dlt_z < event->dlt_z)
++		return 0;
++
++	return 1;
++}
++
++void search_and_signal(void)
++{
++	struct motion_event *event;
++	int freq, i, count;
++
++	spin_lock(&events_lock);
++
++	count = acc_count > WINDOW ? WINDOW : acc_count;
++
++	list_for_each_entry(event, &(evtCtx.events), events) {
++		freq = 0;
++		for (i = 0; i < count; i++) {
++			if (!check_noise(&(buffer[i])))
++				continue;
++
++			if (!delta_is_relevant(&(buffer[i]), &event->motion))
++				continue;
++
++			freq++;
++
++			if (freq >= event->motion.frq) {
++				event->wake_up_counter++;
++				wake_up_all(&event->queue);
++				break;
++			}
++		}
++	}
++
++
++	spin_unlock(&events_lock);
++}
++
++SYSCALL_DEFINE1(set_acceleration, struct dev_acceleration __user *,
++				acceleration)
++{
++
++	if (acceleration == NULL)
++		return -EINVAL;
++
++	if (copy_from_user(&curr_acceleration_part2, acceleration,
++				sizeof(curr_acceleration_part2)))
++		return -EFAULT;
++
++	return 0;
++}
++
++SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
++{
++	struct motion_event *new_event;
++	int id;
++
++	new_event = kmalloc(sizeof(*new_event),  GFP_KERNEL);
++
++	if (new_event == NULL)
++		return -ENOMEM;
++
++	if (acceleration == NULL) {
++		kfree(new_event);
++		return -EINVAL;
++	}
++
++	if (copy_from_user(&new_event->motion, acceleration,
++					sizeof(struct acc_motion))) {
++		kfree(new_event);
++		return -EFAULT;
++	}
++
++	spin_lock(&events_lock);
++	id = evtCtx.current_id++;
++	new_event->id = id;
++	if (new_event->motion.frq > WINDOW)
++		new_event->motion.frq = WINDOW;
++	INIT_LIST_HEAD(&new_event->events);
++	init_waitqueue_head(&new_event->queue);
++	new_event->deletedFlag = 0;
++	new_event->referenceCount = 0;
++	new_event->wake_up_counter = 0;
++	list_add(&new_event->events, &(evtCtx.events));
++	spin_unlock(&events_lock);
++	return id;
++}
++
++SYSCALL_DEFINE1(accevt_wait, int, event_id)
++{
++	int ret;
++
++	if (event_id < 1)
++		return -EINVAL;
++
++	ret = search_and_add(event_id);
++
++	if (ret == 0)
++		return 0;
++	else if (ret == -2)
++		return -EINTR;
++
++	return -EINVAL;
++
++}
++
++SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
++{
++	static struct dev_acceleration *curr_acceleration = &accelerations[0];
++	static struct dev_acceleration *prev_acceleration = &accelerations[1];
++	struct dev_acceleration *temp;
++	static int first_time = 1;
++
++	if (get_current_user()->uid != 0)
++		return -EACCES;
++	if (acceleration == NULL)
++		return -EINVAL;
++	spin_lock(&buffer_lock);
++	if (copy_from_user(curr_acceleration, acceleration,
++				sizeof(*curr_acceleration)))
++		return -EFAULT;
++
++	if (!first_time) {
++		add_delta_acceleration(curr_acceleration, prev_acceleration);
++		search_and_signal();
++	}
++	/* Switch them. curr_acceleration will be overwritten in next call. Not
++	sure if this counts as a memory leak since memory is never freed */
++	temp = curr_acceleration;
++	curr_acceleration = prev_acceleration;
++	prev_acceleration = temp;
++	first_time = 0;
++	spin_unlock(&buffer_lock);
++	return 0;
++}
++
++SYSCALL_DEFINE1(accevt_destroy, int, event_id)
++{
++	struct motion_event *event, *temp;
++	int found = 0, deleted = 0, ret = 0;
++
++	spin_lock(&events_lock);
++
++	list_for_each_entry_safe(event, temp, &(evtCtx.events), events) {
++		if (event->id == event_id) {
++			found = 1;
++
++			if (event->deletedFlag) {
++				deleted = 1;
++				break;
++			}
++
++			event->deletedFlag = 1;
++
++			if (event->referenceCount == 0) {
++				list_del(&event->events);
++				kfree(event);
++			} else {
++				event->wake_up_counter++;
++				wake_up_all(&event->queue);
++			}
++
++			break;
++		}
++	}
++	spin_unlock(&events_lock);
++	if (!found || deleted)
++		ret = -EINVAL;
++
++	return ret;
++}
++
+diff --git a/test/acceleration.h b/test/acceleration.h
+new file mode 100644
+index 0000000..40d2368
+--- /dev/null
++++ b/test/acceleration.h
+@@ -0,0 +1,19 @@
++
++#ifndef _ACCELERATION_H
++#define _ACCELERATION_H
++
++struct dev_acceleration {
++	int x;
++	int y;
++	int z;
++};
++
++struct acc_motion {
++	unsigned int dlt_x; /* +/- around X-axis */
++	unsigned int dlt_y; /* +/- around Y-axis */
++	unsigned int dlt_z; /* +/- around Z-axis */
++	unsigned int frq;   /* Number of samples that satisfies:
++	sum_each_sample(dlt_x + dlt_y + dlt_z) > NOISE */
++};
++
++#endif
+diff --git a/test/creator.c b/test/creator.c
+new file mode 100644
+index 0000000..2390347
+--- /dev/null
++++ b/test/creator.c
+@@ -0,0 +1,68 @@
++#include <stdio.h>
++#include <unistd.h>
++#include <errno.h>
++#include "acceleration.h"
++
++
++#define __NR_set_acceleration 378
++#define __NR_accevt_create 379
++#define __NR_accevt_wait 380
++#define __NR_accevt_signal 381
++#define __NR_accevt_destroy 382
++
++#define TIME_BETWEEN_POLLS 10
++
++int set_acceleration(struct dev_acceleration  *acceleration)
++{
++	return syscall(__NR_set_acceleration, acceleration);
++}
++
++int accevt_create(struct acc_motion *acceleration)
++{
++	return syscall(__NR_accevt_create, acceleration);
++}
++
++int accevt_wait(int event_id)
++{
++	return syscall(__NR_accevt_wait, event_id);
++}
++
++int accevt_signal(struct dev_acceleration *acceleration)
++{
++	return syscall(__NR_accevt_signal, acceleration);
++}
++
++int accevt_destroy(int event_id)
++{
++	return syscall(__NR_accevt_destroy, event_id);
++}
++
++
++int main(int argc, char **argv)
++{
++	struct acc_motion myAcceleration;
++	int dlt_x, dlt_y, dlt_z, freq, id;
++
++	if (argc < 5) {
++		printf("Usage: %s <dlt_x> <dlt_y> <dlt_z> <freq>\n", argv[0]);
++		return -1;
++	}
++
++	dlt_x = atoi(argv[1]);
++	dlt_y = atoi(argv[2]);
++	dlt_z = atoi(argv[3]);
++	freq = atoi(argv[4]);
++
++	myAcceleration.dlt_x = dlt_x;	/* 100; */
++	myAcceleration.dlt_y = dlt_y;	/* 100; */
++	myAcceleration.dlt_z = dlt_z;	/* 100; */
++	myAcceleration.frq = freq;
++
++	id = accevt_create(&myAcceleration);
++
++	if (id < 0)
++		printf("Error: %s\n", strerror(errno));
++	else
++		printf("The returned id for the event is %d\n", id);
++	return 0;
++}
+diff --git a/test/def_test.c b/test/def_test.c
+new file mode 100644
+index 0000000..6ba061f
+--- /dev/null
++++ b/test/def_test.c
+@@ -0,0 +1,127 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <errno.h>
++#include <sys/types.h>
++#include <math.h>
++#include "acceleration.h"
++
++
++#define __NR_set_acceleration 378
++#define __NR_accevt_create 379
++#define __NR_accevt_wait 380
++#define __NR_accevt_signal 381
++#define __NR_accevt_destroy 382
++
++#define TIME_BETWEEN_POLLS 10
++
++#define NUM_PROCS 3
++#define SET_FRQ 5
++#define NUM_EVENTS 3
++#define MAX_DELTA 300
++int set_acceleration(struct dev_acceleration  *acceleration)
++{
++	return syscall(__NR_set_acceleration, acceleration);
++}
++
++int accevt_create(struct acc_motion *acceleration)
++{
++	return syscall(__NR_accevt_create, acceleration);
++}
++
++int accevt_wait(int event_id)
++{
++	return syscall(__NR_accevt_wait, event_id);
++}
++
++int accevt_signal(struct dev_acceleration *acceleration)
++{
++	return syscall(__NR_accevt_signal, acceleration);
++}
++
++int accevt_destroy(int event_id)
++{
++	return syscall(__NR_accevt_destroy, event_id);
++}
++
++int main(int argc, char **argv)
++{
++	int fork_ctr = 0;
++	pid_t pid;
++	static pid_t procid_arr[NUM_PROCS];
++	static int eventid_arr[NUM_EVENTS];
++	int set_freq = SET_FRQ;
++	int event_id = 0;
++	/*Creating the three classes of events*/
++	struct acc_motion myAcceleration[3];
++
++	srand(time(NULL));
++	myAcceleration[0].dlt_x = rand() % MAX_DELTA;
++	myAcceleration[0].dlt_y = 0;
++	myAcceleration[0].dlt_z = 0;
++	myAcceleration[0].frq = set_freq;
++	srand(time(NULL));
++	myAcceleration[1].dlt_x = 0;
++	myAcceleration[1].dlt_y = rand() % MAX_DELTA;
++	myAcceleration[1].dlt_z = 0;
++	myAcceleration[1].frq = set_freq;
++
++	srand(time(NULL));
++	myAcceleration[2].dlt_x = rand() % MAX_DELTA;
++	myAcceleration[2].dlt_y = rand() % MAX_DELTA;
++	myAcceleration[2].dlt_z = 0;
++	myAcceleration[2].frq = set_freq;
++	int event_create_ctr = 0;
++
++	for (event_create_ctr = 0; event_create_ctr < NUM_EVENTS;
++				event_create_ctr++) {
++		if (&myAcceleration[event_create_ctr])
++			event_id = accevt_create(
++				&myAcceleration[event_create_ctr]);
++		if (event_id < 1) {
++			printf("Unable to create event\n");
++			exit(1);
++		}
++		printf("Created event: %d\n", event_id);
++		eventid_arr[event_create_ctr] = event_id;
++	}
++
++	for (fork_ctr = 0; fork_ctr < NUM_PROCS; fork_ctr++) {
++		pid = fork();
++		if (pid < 0) {
++			printf("Fork failed.\n");
++			exit(1);
++		} else if (pid == 0)
++			break;
++		procid_arr[fork_ctr] = pid;
++			printf("Process created: %d %d\n", pid,
++				procid_arr[fork_ctr]);
++	}
++	if (pid == 0) {
++		int wait_ret = 0;
++
++		printf("%d waiting on %d\n", getpid(), eventid_arr[fork_ctr]);
++		wait_ret = accevt_wait(eventid_arr[fork_ctr]);
++		if (wait_ret == 0) {
++			if (fork_ctr == 0)
++				printf("%d detected horizontal shake\n",
++							getpid());
++			else if (fork_ctr == 1)
++				printf("%d detected vertical shake\n",
++							getpid());
++			else if (fork_ctr == 2)
++				printf("%d detected a shake\n", getpid());
++		} else
++			printf("Proc %d ended-Event destroyed.\n", getpid());
++		/*Tested by sending the signals here using the signaler binary*/
++		/*wait_ret = accevt_destroy(event_id);*/
++	} else {
++		sleep(60);
++		int ctr = 0;
++
++		for (ctr = 0; ctr < NUM_EVENTS; ctr++)
++			accevt_destroy(eventid_arr[ctr]);
++		exit(0);
++	}
++	return 0;
++}
+diff --git a/test/destroyer.c b/test/destroyer.c
+new file mode 100644
+index 0000000..691984c
+--- /dev/null
++++ b/test/destroyer.c
+@@ -0,0 +1,57 @@
++#include <stdio.h>
++#include <unistd.h>
++#include "acceleration.h"
++#include <errno.h>
++
++
++#define __NR_set_acceleration 378
++#define __NR_accevt_create 379
++#define __NR_accevt_wait 380
++#define __NR_accevt_signal 381
++#define __NR_accevt_destroy 382
++
++#define TIME_BETWEEN_POLLS 10
++
++int set_acceleration(struct dev_acceleration  *acceleration)
++{
++	return syscall(__NR_set_acceleration, acceleration);
++}
++
++int accevt_create(struct acc_motion *acceleration)
++{
++	return syscall(__NR_accevt_create, acceleration);
++}
++
++int accevt_wait(int event_id)
++{
++	return syscall(__NR_accevt_wait, event_id);
++}
++
++int accevt_signal(struct dev_acceleration *acceleration)
++{
++	return syscall(__NR_accevt_signal, acceleration);
++}
++
++int accevt_destroy(int event_id)
++{
++	return syscall(__NR_accevt_destroy, event_id);
++}
++
++int main(int argc, char **argv)
++{
++	int event_id, ret;
++
++	if (argc < 2) {
++		printf("Usage: %s <event_id>\n", argv[0]);
++		return -1;
++	}
++
++	event_id = atoi(argv[1]);
++
++	ret = accevt_destroy(event_id);
++
++	if (ret < 0)
++		printf("Error: %s\n", strerror(errno));
++
++	return 0;
++}
+diff --git a/test/main_test.c b/test/main_test.c
+new file mode 100644
+index 0000000..ab6736e
+--- /dev/null
++++ b/test/main_test.c
+@@ -0,0 +1,86 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <errno.h>
++#include <sys/types.h>
++#include <math.h>
++#include "acceleration.h"
++
++
++#define __NR_set_acceleration 378
++#define __NR_accevt_create 379
++#define __NR_accevt_wait 380
++#define __NR_accevt_signal 381
++#define __NR_accevt_destroy 382
++
++#define TIME_BETWEEN_POLLS 10
++
++#define NUM_PROCS 10
++#define SET_FRQ 5
++
++int set_acceleration(struct dev_acceleration  *acceleration)
++{
++	return syscall(__NR_set_acceleration, acceleration);
++}
++
++int accevt_create(struct acc_motion *acceleration)
++{
++	return syscall(__NR_accevt_create, acceleration);
++}
++
++int accevt_wait(int event_id)
++{
++	return syscall(__NR_accevt_wait, event_id);
++}
++
++int accevt_signal(struct dev_acceleration *acceleration)
++{
++	return syscall(__NR_accevt_signal, acceleration);
++}
++
++int accevt_destroy(int event_id)
++{
++	return syscall(__NR_accevt_destroy, event_id);
++}
++
++
++int main(int argc, char **argv)
++{
++	int fork_ctr = 0;
++	pid_t pid;
++	int set_freq = SET_FRQ;
++	struct acc_motion myAcceleration;
++	int event_id = 0;
++
++	for (fork_ctr = 0; fork_ctr < NUM_PROCS; fork_ctr++) {
++		pid = fork();
++		if (pid == 0)
++			break;
++	}
++	if (pid == 0) {
++		srand(getpid());
++		myAcceleration.dlt_x = rand()%300 + 100;
++		myAcceleration.dlt_y = rand()%300 + 100;
++		myAcceleration.dlt_z = rand()%300 + 100;
++		myAcceleration.frq = set_freq;
++		event_id = accevt_create(&myAcceleration);
++		printf("%d %d %d %d %d %d\n", getpid(), myAcceleration.dlt_x,
++myAcceleration.dlt_y, myAcceleration.dlt_z, myAcceleration.frq, event_id);
++
++	int wait_ret = 0;
++
++	wait_ret = accevt_wait(event_id);
++	if (wait_ret == 0)
++		printf("%d detected needed shake and ended\n", getpid());
++	else
++		printf("%d ended because of another event\n", getpid());
++	/*Tested by sending the signals here using the signaler binary*/
++
++	wait_ret = accevt_destroy(event_id);
++
++	} else {
++		sleep(60);
++		exit(0);
++	}
++	return 0;
++}
+diff --git a/test/part2_test.c b/test/part2_test.c
+new file mode 100644
+index 0000000..c9b5217
+--- /dev/null
++++ b/test/part2_test.c
+@@ -0,0 +1,41 @@
++#include <stdio.h>
++#include <unistd.h>
++#include "acceleration.h"
++#include <errno.h>
++
++#define __NR_set_acceleration 378
++#define __NR_accevt_create 379
++#define __NR_accevt_wait 380
++#define __NR_accevt_signal 381
++#define __NR_accevt_destroy 382
++
++#define TIME_BETWEEN_POLLS 10
++
++int set_acceleration(struct dev_acceleration  *acceleration)
++{
++	return syscall(__NR_set_acceleration, acceleration);
++}
++
++int main(int argc, char **argv)
++{
++	struct dev_acceleration devAcc;
++	int x, y, z;
++
++	if (argc < 4) {
++		printf("Usage: %s <x> <y> <z>\n", argv[0]);
++		return -1;
++	}
++
++	x = atoi(argv[1]);
++	y = atoi(argv[2]);
++	z = atoi(argv[3]);
++
++	devAcc.x = x * 100;
++	devAcc.y = y * 100;
++	devAcc.z = z * 100;
++
++	if (set_acceleration(&devAcc))
++		printf("Error: %s\n", strerror(errno));
++
++	return 0;
++}
+diff --git a/test/signaler.c b/test/signaler.c
+new file mode 100644
+index 0000000..a8aef8e
+--- /dev/null
++++ b/test/signaler.c
+@@ -0,0 +1,61 @@
++#include <stdio.h>
++#include <unistd.h>
++#include "acceleration.h"
++#include <errno.h>
++
++#define __NR_set_acceleration 378
++#define __NR_accevt_create 379
++#define __NR_accevt_wait 380
++#define __NR_accevt_signal 381
++#define __NR_accevt_destroy 382
++
++#define TIME_BETWEEN_POLLS 10
++
++int set_acceleration(struct dev_acceleration  *acceleration)
++{
++	return syscall(__NR_set_acceleration, acceleration);
++}
++
++int accevt_create(struct acc_motion *acceleration)
++{
++	return syscall(__NR_accevt_create, acceleration);
++}
++
++int accevt_wait(int event_id)
++{
++	return syscall(__NR_accevt_wait, event_id);
++}
++
++int accevt_signal(struct dev_acceleration *acceleration)
++{
++	return syscall(__NR_accevt_signal, acceleration);
++}
++
++int accevt_destroy(int event_id)
++{
++	return syscall(__NR_accevt_destroy, event_id);
++}
++
++int main(int argc, char **argv)
++{
++	struct dev_acceleration devAcc;
++	int x, y, z;
++
++	if (argc < 4) {
++		printf("Usage: %s <x> <y> <z>\n", argv[0]);
++		return -1;
++	}
++
++	x = atoi(argv[1]);
++	y = atoi(argv[2]);
++	z = atoi(argv[3]);
++
++	devAcc.x = x * 100;
++	devAcc.y = y * 100;
++	devAcc.z = z * 100;
++
++	if (accevt_signal(&devAcc))
++		printf("Error: %s\n", strerror(errno));
++
++	return 0;
++}
+diff --git a/test/syscall-test.c b/test/syscall-test.c
+new file mode 100644
+index 0000000..60043e1
+--- /dev/null
++++ b/test/syscall-test.c
+@@ -0,0 +1,8 @@
++#include<sys/syscall.h>
++#include<unistd.h>
++
++int main(int argc, char **argv)
++{
++	syscall(378, 0);
++	return 0;
++}
+diff --git a/test/waiter.c b/test/waiter.c
+new file mode 100644
+index 0000000..4130d26
+--- /dev/null
++++ b/test/waiter.c
+@@ -0,0 +1,57 @@
++#include <stdio.h>
++#include <unistd.h>
++#include "acceleration.h"
++#include <errno.h>
++
++
++#define __NR_set_acceleration 378
++#define __NR_accevt_create 379
++#define __NR_accevt_wait 380
++#define __NR_accevt_signal 381
++#define __NR_accevt_destroy 382
++
++#define TIME_BETWEEN_POLLS 10
++
++int set_acceleration(struct dev_acceleration  *acceleration)
++{
++	return syscall(__NR_set_acceleration, acceleration);
++}
++
++int accevt_create(struct acc_motion *acceleration)
++{
++	return syscall(__NR_accevt_create, acceleration);
++}
++
++int accevt_wait(int event_id)
++{
++	return syscall(__NR_accevt_wait, event_id);
++}
++
++int accevt_signal(struct dev_acceleration *acceleration)
++{
++	return syscall(__NR_accevt_signal, acceleration);
++}
++
++int accevt_destroy(int event_id)
++{
++	return syscall(__NR_accevt_destroy, event_id);
++}
++
++int main(int argc, char **argv)
++{
++	int event_id, ret;
++
++	if (argc < 2) {
++		printf("Usage: %s <event_id>\n", argv[0]);
++		return -1;
++	}
++
++	event_id = atoi(argv[1]);
++
++	ret = accevt_wait(event_id);
++
++	if (ret < 0)
++		printf("Error: %s\n", strerror(errno));
++
++	return 0;
++}
