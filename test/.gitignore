@@ -1,1 +1,8 @@
 *.o
+singaler
+waiter
+destroyer
+creator
+main_test
+def_test
+part2_test.c

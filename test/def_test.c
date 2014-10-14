@@ -44,12 +44,8 @@ int accevt_destroy(int event_id)
 	return syscall(__NR_accevt_destroy, event_id);
 }
 
-
 int main(int argc, char **argv)
 {
-		
-	
-	
 	int fork_ctr = 0;
 	pid_t pid;
 	static pid_t procid_arr[NUM_PROCS];
@@ -57,14 +53,13 @@ int main(int argc, char **argv)
 	int set_freq = SET_FRQ;
 	int event_id = 0;
 	/*Creating the three classes of events*/
-	
 	struct acc_motion myAcceleration[3];
+
 	srand(time(NULL));
 	myAcceleration[0].dlt_x = rand() % MAX_DELTA;
 	myAcceleration[0].dlt_y = 0;
 	myAcceleration[0].dlt_z = 0;
 	myAcceleration[0].frq = set_freq;
-
 	srand(time(NULL));
 	myAcceleration[1].dlt_x = 0;
 	myAcceleration[1].dlt_y = rand() % MAX_DELTA;
@@ -75,73 +70,57 @@ int main(int argc, char **argv)
 	myAcceleration[2].dlt_x = rand() % MAX_DELTA;
 	myAcceleration[2].dlt_y = rand() % MAX_DELTA;
 	myAcceleration[2].dlt_z = 0;
-	myAcceleration[2].frq = set_freq; 
-
+	myAcceleration[2].frq = set_freq;
 	int event_create_ctr = 0;
-	for (event_create_ctr = 0; event_create_ctr < NUM_EVENTS; event_create_ctr++) {
-	
-	if(&myAcceleration[event_create_ctr])
-		event_id = accevt_create (&myAcceleration[event_create_ctr]);
-		
-	if(event_id < 1) {
-		
-		printf("Unable to create event\n");
-		exit(1);
 
+	for (event_create_ctr = 0; event_create_ctr < NUM_EVENTS;
+				event_create_ctr++) {
+		if (&myAcceleration[event_create_ctr])
+			event_id = accevt_create(
+				&myAcceleration[event_create_ctr]);
+		if (event_id < 1) {
+			printf("Unable to create event\n");
+			exit(1);
+		}
+		printf("Created event: %d\n", event_id);
+		eventid_arr[event_create_ctr] = event_id;
 	}
-	printf("Created event: %d\n", event_id);
-	eventid_arr[event_create_ctr] = event_id;
 
-	}
-	
 	for (fork_ctr = 0; fork_ctr < NUM_PROCS; fork_ctr++) {
 		pid = fork();
 		if (pid < 0) {
-		
-		printf("Fork failed.\n");
-		exit(1);
-
-		}
-		else if (pid == 0)
+			printf("Fork failed.\n");
+			exit(1);
+		} else if (pid == 0)
 			break;
-	
-		else {
 		procid_arr[fork_ctr] = pid;
-		printf("Process created: %d %d\n", pid, procid_arr[fork_ctr]);
-		}
-
+			printf("Process created: %d %d\n", pid,
+				procid_arr[fork_ctr]);
 	}
-	
 	if (pid == 0) {
 		int wait_ret = 0;
-		printf("%d waiting on %d\n",getpid() , eventid_arr[fork_ctr]);
+
+		printf("%d waiting on %d\n", getpid(), eventid_arr[fork_ctr]);
 		wait_ret = accevt_wait(eventid_arr[fork_ctr]);
-		if(wait_ret == 0) {
-			
-			if(fork_ctr == 0)
-				printf("%d detected horizontal shake\n", getpid());
+		if (wait_ret == 0) {
+			if (fork_ctr == 0)
+				printf("%d detected horizontal shake\n",
+							getpid());
 			else if (fork_ctr == 1)
-				printf("%d detected vertical shake\n", getpid());
+				printf("%d detected vertical shake\n",
+							getpid());
 			else if (fork_ctr == 2)
 				printf("%d detected a shake\n", getpid());
-		}
-			
-		else {
+		} else
 			printf("Processes ended because of another signal.\n");
-		}
 		/*Tested by sending the signals here using the signaler binary*/
-
 		/*wait_ret = accevt_destroy(event_id);*/
-
-	} 
-	
-	else {
-		
+	} else {
 		sleep(60);
 		int ctr = 0;
-		for(ctr = 0; ctr<NUM_EVENTS;ctr++) {
+
+		for (ctr = 0; ctr < NUM_EVENTS; ctr++)
 			accevt_destroy(eventid_arr[ctr]);
-		}
 		exit(0);
 	}
 	return 0;
