@@ -112,7 +112,7 @@ int main(int argc, char **argv)
 			else if (fork_ctr == 2)
 				printf("%d detected a shake\n", getpid());
 		} else
-			printf("Processes ended because of another signal.\n");
+			printf("Proc %d ended-Event destroyed.\n", getpid());
 		/*Tested by sending the signals here using the signaler binary*/
 		/*wait_ret = accevt_destroy(event_id);*/
 	} else {
