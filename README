@@ -2,6 +2,7 @@ Homework 3 - Team 23
 Nicolas Mesa, Di Ruan, Sankalp Singayapally
 
 Test programs:
+Please run make in the test folder.
 Test program as per homework specification is in def_test
 Alternate test program is in main_test
 Run the test program and if the parent process sleeps, then children exit with the appropriate error message

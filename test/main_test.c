@@ -73,7 +73,7 @@ myAcceleration.dlt_y, myAcceleration.dlt_z, myAcceleration.frq, event_id);
 	if (wait_ret == 0)
 		printf("%d detected needed shake and ended\n", getpid());
 	else
-		printf("%d ended because of another event\n", getpid());
+		printf("%d ended because of another reason", getpid());
 	/*Tested by sending the signals here using the signaler binary*/
 
 	wait_ret = accevt_destroy(event_id);

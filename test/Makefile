@@ -20,6 +20,6 @@ clean:
 	rm -f signaler signaler.o
 	rm -f waiter waiter.o
 	rm -f destroyer destroyer.o
-
+	rm -f syscall-test syscall-test.o
 
 .PHONY: clean

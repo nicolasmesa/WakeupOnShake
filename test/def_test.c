@@ -95,8 +95,7 @@ int main(int argc, char **argv)
 		} else if (pid == 0)
 			break;
 		procid_arr[fork_ctr] = pid;
-			printf("Process created: %d %d\n", pid,
-				procid_arr[fork_ctr]);
+			printf("Process created: %d %d\n", pid]);
 	}
 	if (pid == 0) {
 		int wait_ret = 0;
