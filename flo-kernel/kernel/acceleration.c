@@ -50,7 +50,7 @@ int search_and_add(int event_id)
 					event->referenceCount--;
 					finish_wait(&event->queue, &wait);
 					spin_unlock(&events_lock);
-					return -1;
+					return -2;
 				}
 
 				spin_unlock(&events_lock);
@@ -202,12 +202,20 @@ SYSCALL_DEFINE1(accevt_create, struct acc_motion __user *, acceleration)
 
 SYSCALL_DEFINE1(accevt_wait, int, event_id)
 {
+	int ret;
+
 	if (event_id < 1)
 		return -EINVAL;
 
-	if (search_and_add(event_id) == 0)
+	ret = search_and_add(event_id);
+
+	if (ret == 0)
 		return 0;
+	else if (ret == -2)
+		return -EINTR;
+
 	return -EINVAL;
+
 }
 
 SYSCALL_DEFINE1(accevt_signal, struct dev_acceleration __user *, acceleration)
