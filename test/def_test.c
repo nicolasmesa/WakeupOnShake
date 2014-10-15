@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <math.h>
+#include <time.h>
 #include "acceleration.h"
 
 

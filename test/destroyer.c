@@ -2,7 +2,8 @@
 #include <unistd.h>
 #include "acceleration.h"
 #include <errno.h>
-
+#include <string.h>
+#include <stdlib.h>
 
 #define __NR_set_acceleration 378
 #define __NR_accevt_create 379

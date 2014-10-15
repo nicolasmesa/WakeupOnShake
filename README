@@ -1,0 +1,23 @@
+Homework 3 - Team 23
+Nicolas Mesa, Di Ruan, Sankalp Singayapally
+
+Test programs:
+Test program as per homework specification is in def_test
+Alternate test program is in main_test
+Run the test program and if the parent process sleeps, then children exit with the appropriate error message
+Else when event occurs, the child programs exit accordingly
+
+NOISE can be configured in acceleration.h in /linux/include/acceleration.h
+System Calls are in /kernel/acceleration.c
+
+We have a daemon process that fetches the sensor data and writes to the kernel.
+Kernel then calculates the difference in acceleration between successive daemon data
+and stores in a linked list of size WINDOW. To check whether an event has occurred,
+for each event, we iterate through the list, while under appropriate locks,
+and check if the specified event's baseline deltas are satisfied for the required frequency.
+If that condition is satisfied, then we wake up all processes waiting on the event. 
+
+When an event is destroyed, all the processes waiting on it are woken up but know that
+it was a spurious wake up based on the returned code. Other binaries in the test folder
+were made for easy testing on the emulator. For example, signaler sends accelerations into the kernel.
+This was done just to do away with using sensorsim, which also works.
