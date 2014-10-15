@@ -14,7 +14,7 @@ all: def_test main_test creator signaler waiter destroyer syscall-test
 	$(CC) $(CFLAGS) -c $^
 
 clean:
-	rm -f def_test def_test.o 
+	rm -f def_test def_test.o
 	rm -f main_test main_test.o
 	rm -f creator creator.o
 	rm -f signaler signaler.o
